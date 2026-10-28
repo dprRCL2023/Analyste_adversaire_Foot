@@ -1,0 +1,4 @@
+# Dépendances des TESTS, EN PLUS de requirements-web.txt (rien de plus pour
+# l'instant ; pypdf arrivera avec l'export PDF de l'étape 6).
+#   pip install -r analyste/webapp/requirements-test.txt
+-r requirements-web.txt

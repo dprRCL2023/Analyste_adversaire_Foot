@@ -1,0 +1,25 @@
+{% load static %}<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titre %}Analyste{% endblock %} — USL Dunkerque</title>
+  <link rel="stylesheet" href="{% static 'analyste/app.css' %}">
+</head>
+<body>
+  {# CSP stricte : ni style ni gestionnaire d'événement en attribut (cf. analyste_site/securite.py). #}
+  <header class="entete">
+    <a class="marque" href="{% url 'accueil' %}">Analyste</a>
+    {% if user.is_authenticated %}
+      <form method="post" action="{% url 'logout' %}" class="deconnexion">
+        {% csrf_token %}
+        <span class="compte">{{ user.get_username }}</span>
+        <button type="submit">Se déconnecter</button>
+      </form>
+    {% endif %}
+  </header>
+  <main class="contenu">
+    {% block contenu %}{% endblock %}
+  </main>
+</body>
+</html>

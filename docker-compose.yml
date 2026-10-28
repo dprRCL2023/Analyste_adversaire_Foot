@@ -1,0 +1,47 @@
+# Appli « Analyste » : une base MySQL à elle + l'appli web.
+# Lancement (depuis analyste/) :  docker compose up -d --build
+# Les variables viennent de analyste/.env (copie de .env.example, jamais commité).
+#
+# Pour l'instant EN LOCAL (réponse de Julien à Q2) : l'appli n'est publiée que
+# sur 127.0.0.1:8010, la base n'est publiée nulle part.
+
+name: analyste   # nom de projet FIXE : volumes analyste_db_data, indépendants
+                 # du dossier d'où l'on lance compose et de ceux de Recrutement.
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # Aucun `ports:` : la base n'est joignable que par le réseau interne compose.
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_ENGINE: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # BOUCLE LOCALE uniquement. ⚠️ « 8010:8000 » sans adresse publierait sur
+      # 0.0.0.0 (Docker ouvre lui-même le port, un pare-feu ne le referme pas).
+      - "127.0.0.1:8010:8000"
+
+volumes:
+  db_data:

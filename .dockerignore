@@ -1,0 +1,10 @@
+# Rien de secret ni de lourd dans le contexte de build.
+.env
+.env.*
+**/.env
+**/__pycache__/
+**/*.pyc
+**/db.sqlite3
+webapp/staticfiles/
+cache/
+**/cache/

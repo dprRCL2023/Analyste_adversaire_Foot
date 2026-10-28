@@ -1,0 +1,64 @@
+/* Appli Analyste — feuille unique. Palette nuit / sable du club, comme Recrutement. */
+:root {
+  --night: #1B2738;
+  --sand: #E0C090;
+  --fond: #F4F2EE;
+  --texte: #1B2738;
+  --gris: #6B7380;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--fond);
+  color: var(--texte);
+}
+
+.entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--night);
+  color: #fff;
+}
+
+.marque {
+  color: var(--sand);
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: .04em;
+}
+
+.deconnexion { display: flex; align-items: center; gap: 12px; }
+.compte { color: #fff; }
+
+.contenu { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+
+.carte {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+.connexion { max-width: 380px; margin: 40px auto; }
+.connexion form { display: flex; flex-direction: column; gap: 8px; }
+/* 16 px minimum : en dessous, iOS zoome à la sélection d'un champ. */
+.connexion input { font-size: 16px; padding: 8px; }
+
+button {
+  font-size: 16px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--sand);
+  color: var(--night);
+  cursor: pointer;
+}
+
+.erreur { color: #A12A2A; }
+.vide, .aide { color: var(--gris); }

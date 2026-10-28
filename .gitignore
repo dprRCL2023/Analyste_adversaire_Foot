@@ -1,0 +1,12 @@
+# .gitignore du pôle Analyste (en plus du .gitignore racine, qui ignore déjà
+# tous les .env).
+
+# Base SQLite de dépannage (jamais versionnée)
+webapp/db.sqlite3
+
+# Fichiers statiques collectés (collectstatic)
+webapp/staticfiles/
+
+# Cache brut des fournisseurs (StatsBomb, Second Spectrum) : données sous
+# licence, jamais dans le dépôt
+cache/

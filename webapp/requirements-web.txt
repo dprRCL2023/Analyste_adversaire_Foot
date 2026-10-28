@@ -1,0 +1,13 @@
+# Dépendances RUNTIME de l'appli Analyste. Mêmes versions que Recrutement
+# (recrutement/webapp/requirements-web.txt), à suivre ensemble pour les
+# correctifs de sécurité de Django (branche 5.2 LTS).
+# Le reste (ReportLab pour le PDF…) arrive avec l'étape qui s'en sert.
+# Clients StatsBomb / Second Spectrum : urllib de la bibliothèque standard,
+# ni `requests` ni pandas.
+Django==5.2.17
+gunicorn==23.0.0
+mysqlclient==2.2.7
+whitenoise==6.12.0
+django-axes==8.3.1
+# Requis par django-axes pour lire la vraie IP derrière un reverse-proxy.
+django-ipware==7.0.1
