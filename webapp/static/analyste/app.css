@@ -62,3 +62,43 @@ button {
 
 .erreur { color: #A12A2A; }
 .vide, .aide { color: var(--gris); }
+
+.navigation { flex: 1; margin-left: 24px; }
+.navigation a { color: #fff; text-decoration: none; }
+.navigation a:hover { text-decoration: underline; }
+
+/* Page « Adversaire du week-end » */
+.commande {
+  background: var(--fond);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.choix-suivi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.choix-suivi select { font-size: 16px; padding: 6px; }
+.bilan { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.forme { display: inline-flex; gap: 4px; }
+.defile { overflow-x: auto; }
+.matchs { width: 100%; border-collapse: collapse; }
+.matchs th, .matchs td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #E5E2DC; white-space: nowrap; }
+.matchs th { color: var(--gris); font-weight: 600; }
+.res {
+  display: inline-block;
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+}
+.res-V { background: #2E7D4F; }
+.res-N { background: #8A8F98; }
+.res-D { background: #A12A2A; }
+.badge-360 {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--night);
+  color: var(--sand);
+  font-size: 12px;
+  font-weight: 700;
+}

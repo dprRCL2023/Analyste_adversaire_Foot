@@ -7,6 +7,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
 
@@ -27,10 +28,17 @@ class ConnexionObligatoireTest(TestCase):
 
     def test_accueil_connecte(self):
         compte = get_user_model().objects.create_user("analyste-test", password="x")
+        compte.groups.add(Group.objects.get(name="staff"))
         self.client.force_login(compte)
         reponse = self.client.get("/")
         self.assertEqual(reponse.status_code, 200)
         self.assertContains(reponse, "Adversaire du week-end")
+
+    def test_accueil_connecte_sans_role_refuse(self):
+        """Étape 3a : refus par défaut d'un compte sans groupe."""
+        compte = get_user_model().objects.create_user("sans-role", password="x")
+        self.client.force_login(compte)
+        self.assertEqual(self.client.get("/").status_code, 403)
 
     def test_aucune_route_media(self):
         compte = get_user_model().objects.create_user("analyste-test", password="x")

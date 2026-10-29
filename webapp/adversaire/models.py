@@ -129,3 +129,29 @@ class DonneesMatch(models.Model):
 
     def __str__(self):
         return f"Données {self.match_id}"
+
+
+class AdversaireSuivi(models.Model):
+    """Équipe CIBLÉE par `importer_adversaire` dans une compétition-saison.
+
+    Sans elle, rien ne distingue l'adversaire de ses propres adversaires (tous
+    dans `Equipe`). Recalculable : la commande la crée ou la met à jour, rien
+    ne s'y saisit à la main."""
+    equipe = models.ForeignKey(Equipe, on_delete=models.PROTECT, related_name="suivis")
+    competition = models.ForeignKey(Competition, on_delete=models.CASCADE,
+                                    related_name="suivis")
+    cree_le = models.DateTimeField(auto_now_add=True)
+    # Date du dernier passage de la commande (même « déjà à jour »).
+    importe_le = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["equipe", "competition"],
+                                    name="suivi_equipe_competition_unique"),
+        ]
+        ordering = ["-importe_le", "-id"]
+        verbose_name = "adversaire suivi"
+        verbose_name_plural = "adversaires suivis"
+
+    def __str__(self):
+        return f"{self.equipe} ({self.competition})"

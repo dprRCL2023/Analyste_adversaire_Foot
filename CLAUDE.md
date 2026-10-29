@@ -40,7 +40,14 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
    compressé zlib EN BASE, pas de cache disque), `clients/statsbomb.py`,
    `importation.py` (règles, sans réseau), commande `importer_adversaire`,
    admin en lecture seule. Aucune vue.
-3. Fiche adversaire (StatsBomb).
+3. Fiche adversaire (StatsBomb), découpée (plan validé le 29/10/2026) :
+   - **3a — fait** : rôles (`roles.py`, refus par défaut), `AdversaireSuivi`
+     (équipe CIBLÉE par l'import), page « Adversaire du week-end » (`/`) avec
+     les 5 derniers matchs importés, forme et bilan ;
+   - 3b : table d'indicateurs calculés À L'IMPORT (un enregistrement par match
+     et par équipe), partagée avec l'Après-match ;
+   - 3c : fiche complète (forme, système et XI probable, attaque, défense, CPA).
+   - Ensuite : **Après-match** (rapport d'après-match, sur la table de 3b).
 4. Second Spectrum (physique, rapprochement SS ↔ SB par date + équipes).
 5. Séquences horodatées, playlists, notes (sans vidéo).
 6. Synthèse + export PDF (ReportLab).
@@ -58,6 +65,19 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
   Second Spectrum lus depuis l'environnement, utilisés côté serveur seulement,
   jamais envoyés au navigateur ni journalisés. `.env.example` sans valeurs (un
   test le vérifie). Tests : faux JSON inventés, aucun appel réseau réel.
+- **Rôles, REFUS PAR DÉFAUT** (`adversaire/roles.py`, étape 3a) : groupes
+  `analyste` (importe, écrira les textes) et `staff` (consulte, exporte),
+  créés par la migration 0002. Toute vue métier porte
+  `@role_requis(peut_consulter)` (ou `peut_analyser`) : un compte connecté
+  sans groupe reçoit 403 (« un scout ne voit rien »). Vérifié DANS la vue,
+  jamais seulement en masquant un lien. Les comptes se rangent dans les
+  groupes depuis l'admin (superutilisateur).
+- **Tous les calculs à l'IMPORT, jamais pendant une requête web** : une vue
+  lit des tables déjà calculées, n'appelle aucun fournisseur et ne
+  décompresse jamais le brut.
+- **Textes saisis par le staff (à venir)** : tables à part, rattachées au match
+  en `on_delete=PROTECT` ; aucune commande d'import ou de recalcul n'y écrit,
+  et elles restent exclues de toute synchronisation future.
 - **Aucune route `/media/`.**
 - **django-axes : REMOTE_ADDR seulement** (`securite.ip_client`). X-Forwarded-For
   n'est lu que si `AXES_PROXY_COUNT` ≥ 1 est posé EXPRÈS derrière un vrai proxy
@@ -101,6 +121,20 @@ python manage.py importer_adversaire --competition C --saison S --equipes
 python manage.py importer_adversaire --competition C --saison S --equipe E \
     [--derniers 5] [--sans-360] [--forcer]
 ```
+
+## Page « Adversaire du week-end » (étape 3a)
+
+- `AdversaireSuivi` (équipe, compétition, `importe_le`) : posé par
+  `importer_adversaire` pour l'équipe CIBLÉE (jamais deviné : deux
+  adversaires importés ont pu se rencontrer). Rien si l'équipe n'apparaît dans
+  aucun match de la saison. ⚠️ Imports faits AVANT 3a : relancer la même
+  commande (rien n'est retéléchargé, le suivi est créé).
+- `/` : suivi le plus récemment importé par défaut, `?suivi=<id>` sinon
+  (`int()`, invalide ou inconnu → 404) ; 5 derniers matchs de l'équipe DANS la
+  compétition suivie, résultat vu par l'adversaire, forme et bilan.
+- Requêtes : nombre fixe (pas de N+1, test), badge 360 par annotation
+  `Exists(… frames_360_z IS NOT NULL)` : aucune colonne `*_z` lue (test sur
+  le SQL capturé), pas de `nulls_last`.
 
 ## Commandes
 

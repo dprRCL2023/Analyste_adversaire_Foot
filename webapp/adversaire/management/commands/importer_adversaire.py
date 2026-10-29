@@ -93,3 +93,6 @@ class Command(BaseCommand):
             f"{bilan.retenus} match(s) retenu(s) : {bilan.telecharges} téléchargé(s), "
             f"{bilan.a_jour} déjà à jour ; {bilan.avec_360} avec 360, "
             f"{bilan.sans_360} sans 360 ; {len(bilan.erreurs)} ignoré(s)."))
+        if not bilan.suivi:
+            self.stderr.write("Équipe absente des matchs de cette saison : "
+                              "elle n'apparaîtra pas sur la page « Adversaire du week-end ».")

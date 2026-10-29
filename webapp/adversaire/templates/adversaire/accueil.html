@@ -1,9 +1,66 @@
 {% extends "base.html" %}
-{% block titre %}Adversaires{% endblock %}
+{% block titre %}Adversaire du week-end{% endblock %}
 {% block contenu %}
 <section class="carte">
   <h1>Adversaire du week-end</h1>
-  <p class="vide">Aucun adversaire importé pour l'instant.</p>
-  <p class="aide">L'import des 5 derniers matchs d'un adversaire (StatsBomb) arrive à l'étape suivante.</p>
+  {% if not suivi %}
+    <p class="vide">Aucun adversaire importé pour l'instant.</p>
+    <p class="aide">L'import se fait en ligne de commande (jamais depuis cette page) :</p>
+    <pre class="commande">python manage.py importer_adversaire --catalogue
+python manage.py importer_adversaire --competition C --saison S --equipes
+python manage.py importer_adversaire --competition C --saison S --equipe E</pre>
+  {% else %}
+    {% if suivis|length > 1 %}
+      <form method="get" class="choix-suivi">
+        <label for="suivi">Adversaire</label>
+        <select name="suivi" id="suivi">
+          {% for s in suivis %}
+            <option value="{{ s.id }}"{% if s.id == suivi.id %} selected{% endif %}>{{ s.equipe.nom }} — {{ s.competition }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Afficher</button>
+      </form>
+    {% endif %}
+
+    <h2>{{ suivi.equipe.nom }}</h2>
+    <p class="aide">{{ suivi.competition }} · importé le {{ suivi.importe_le|date:"d/m/Y à H:i" }}</p>
+
+    {% if lignes %}
+      <p class="bilan">
+        <span class="forme">
+          {% for r in bilan.forme %}<span class="res res-{{ r }}">{{ r }}</span>{% endfor %}
+        </span>
+        <span>{{ bilan.points }} pt{{ bilan.points|pluralize }} sur {{ bilan.matchs }} match{{ bilan.matchs|pluralize }}</span>
+        <span>buts : {{ bilan.pour }} pour, {{ bilan.contre }} contre</span>
+      </p>
+      <div class="defile">
+        <table class="matchs">
+          <thead>
+            <tr>
+              <th>Date</th><th>J.</th><th>Lieu</th><th>Adversaire rencontré</th>
+              <th>Score</th><th>Rés.</th><th>360</th><th>Importé le</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in lignes %}
+              <tr>
+                <td>{{ l.match.date|date:"d/m/Y" }}</td>
+                <td>{{ l.match.journee|default:"—" }}</td>
+                <td>{% if l.a_domicile %}Domicile{% else %}Extérieur{% endif %}</td>
+                <td>{{ l.rencontre.nom }}</td>
+                <td>{% if l.resultat %}{{ l.pour }} – {{ l.contre }}{% else %}—{% endif %}</td>
+                <td>{% if l.resultat %}<span class="res res-{{ l.resultat }}">{{ l.resultat }}</span>{% else %}—{% endif %}</td>
+                <td>{% if l.match.a_360 %}<span class="badge-360">360</span>{% endif %}</td>
+                <td>{{ l.match.importe_le|date:"d/m/Y" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="aide">Les {{ nb_derniers }} derniers matchs importés, du plus récent au plus ancien. Résultat vu par {{ suivi.equipe.nom }}.</p>
+    {% else %}
+      <p class="vide">Aucun match importé pour cet adversaire dans cette compétition.</p>
+    {% endif %}
+  {% endif %}
 </section>
 {% endblock %}

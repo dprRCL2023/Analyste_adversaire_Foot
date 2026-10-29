@@ -9,7 +9,8 @@ from django.test import SimpleTestCase, TestCase
 
 from adversaire import importation
 from adversaire.clients.statsbomb import ErreurStatsBomb
-from adversaire.models import Competition, DonneesMatch, Equipe, Match, compresser, decompresser
+from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, Match,
+                               compresser, decompresser)
 
 from . import donnees_inventees as inv
 
@@ -248,6 +249,37 @@ class ImportTest(TestCase):
     def test_competition_non_couverte(self):
         with self.assertRaisesMessage(ErreurStatsBomb, "absente du catalogue"):
             importer(FauxClient(self.matchs, couvert=False))
+        self.assertFalse(AdversaireSuivi.objects.exists())
+
+    def test_suivi_cree_puis_redate(self):
+        """Étape 3a : l'équipe CIBLÉE est notée, pas ses adversaires."""
+        bilan = importer(FauxClient(self.matchs))
+        self.assertTrue(bilan.suivi)
+        suivi = AdversaireSuivi.objects.select_related("equipe", "competition").get()
+        self.assertEqual(suivi.equipe.sb_team_id, inv.ADVERSAIRE)
+        self.assertEqual(suivi.competition.sb_competition_id, inv.COMPETITION)
+        premier = suivi.importe_le
+        bilan = importer(FauxClient(self.matchs))  # rien à retélécharger
+        self.assertEqual(bilan.telecharges, 0)
+        suivi.refresh_from_db()
+        self.assertEqual(AdversaireSuivi.objects.count(), 1)
+        self.assertGreaterEqual(suivi.importe_le, premier)
+
+    def test_suivi_de_chaque_adversaire_importe(self):
+        importer(FauxClient(self.matchs))
+        importation.importer_adversaire(FauxClient(self.matchs), inv.COMPETITION,
+                                        inv.SAISON, 103)
+        self.assertEqual(sorted(AdversaireSuivi.objects.values_list("equipe__sb_team_id",
+                                                                    flat=True)),
+                         [inv.ADVERSAIRE, 103])
+
+    def test_aucun_suivi_si_equipe_absente_de_la_saison(self):
+        bilan = importation.importer_adversaire(FauxClient(self.matchs), inv.COMPETITION,
+                                                inv.SAISON, 999)
+        self.assertFalse(bilan.suivi)
+        self.assertEqual(bilan.retenus, 0)
+        self.assertFalse(AdversaireSuivi.objects.exists())
+        self.assertFalse(Equipe.objects.filter(sb_team_id=999).exists())
 
 
 class CommandeTest(TestCase):
@@ -280,6 +312,13 @@ class CommandeTest(TestCase):
         self.assertIn("1 ignoré(s)", sortie)
         self.assertIn("Ignoré : match 801", erreurs)
         self.assertNotIn(inv.JOUEUR_INVENTE, sortie + erreurs)
+
+    def test_equipe_absente_signalee(self):
+        sortie, erreurs = self.lancer(
+            FauxClient([inv.match(901, "2026-10-01")]), "--competition", str(inv.COMPETITION),
+            "--saison", str(inv.SAISON), "--equipe", "999")
+        self.assertIn("0 match(s) retenu(s)", sortie)
+        self.assertIn("n'apparaîtra pas", erreurs)
 
     def test_arguments_obligatoires(self):
         with self.assertRaisesMessage(CommandError, "--competition et --saison"):

@@ -11,6 +11,9 @@
   <header class="entete">
     <a class="marque" href="{% url 'accueil' %}">Analyste</a>
     {% if user.is_authenticated %}
+      <nav class="navigation">
+        <a href="{% url 'accueil' %}">Adversaire du week-end</a>
+      </nav>
       <form method="post" action="{% url 'logout' %}" class="deconnexion">
         {% csrf_token %}
         <span class="compte">{{ user.get_username }}</span>

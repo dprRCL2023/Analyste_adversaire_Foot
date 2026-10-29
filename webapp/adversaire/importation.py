@@ -9,6 +9,8 @@
   `last_updated_360` changé (ou 360 devenu disponible) → seul le 360 relu.
 - Écriture match par match dans une transaction : une coupure ne laisse pas un
   match à moitié écrit.
+- L'équipe ciblée est notée dans `AdversaireSuivi` (étape 3a) : c'est elle
+  qu'affiche la page « Adversaire du week-end ».
 """
 import http.client
 from dataclasses import dataclass, field
@@ -16,9 +18,10 @@ from datetime import date, time
 
 from django.db import transaction
 from django.db.models import BooleanField, ExpressionWrapper, Q
+from django.utils import timezone
 
 from .clients.statsbomb import ErreurStatsBomb
-from .models import Competition, DonneesMatch, Equipe, Match
+from .models import AdversaireSuivi, Competition, DonneesMatch, Equipe, Match
 
 DISPONIBLE = "available"
 NB_DERNIERS = 5
@@ -157,6 +160,7 @@ class Bilan:
     avec_360: int = 0
     sans_360: int = 0
     erreurs: list = field(default_factory=list)
+    suivi: bool = False  # adversaire enregistré pour la page « Adversaire du week-end »
 
 
 def _liste(valeur, quoi, ident):
@@ -236,7 +240,8 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
             "compte": compte,
         })
 
-    retenus, erreurs = derniers_matchs(client.matchs(competition_id, season_id), equipe_id, n)
+    matchs_bruts = client.matchs(competition_id, season_id)
+    retenus, erreurs = derniers_matchs(matchs_bruts, equipe_id, n)
     bilan = Bilan(retenus=len(retenus), erreurs=list(erreurs))
     for m in retenus:
         try:
@@ -263,4 +268,21 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
         journal(f"{m['date']} match {m['id']} : "
                 f"{'téléchargé' if etat == TELECHARGE else 'déjà à jour'}"
                 f"{', avec 360' if a_360 else ', sans 360'}")
+    bilan.suivi = suivre(competition, equipe_id, equipes_de(matchs_bruts).get(equipe_id))
     return bilan
+
+
+def suivre(competition, equipe_id, nom):
+    """Enregistre (ou date à nouveau) l'équipe CIBLÉE par l'import : c'est
+    elle que montre la page « Adversaire du week-end ». Rien si l'équipe
+    n'apparaît dans aucun match de la saison (identifiant erroné). Rend vrai
+    si le suivi est posé."""
+    if not nom:
+        return False
+    with transaction.atomic():
+        equipe, _ = Equipe.objects.update_or_create(sb_team_id=equipe_id,
+                                                    defaults={"nom": nom})
+        AdversaireSuivi.objects.update_or_create(
+            equipe=equipe, competition=competition,
+            defaults={"importe_le": timezone.now()})
+    return True

@@ -4,7 +4,7 @@ rien ne se saisit ni ne se supprime ici. Le brut compress√© n'est jamais affich√
 from django.contrib import admin
 from django.db.models import BooleanField, ExpressionWrapper, Q
 
-from .models import Competition, DonneesMatch, Equipe, Match
+from .models import AdversaireSuivi, Competition, DonneesMatch, Equipe, Match
 
 
 class LectureSeule(admin.ModelAdmin):
@@ -36,6 +36,12 @@ class MatchAdmin(LectureSeule):
     list_filter = ("competition", "statut_360")
     list_select_related = ("domicile", "exterieur", "competition")
     date_hierarchy = "date"
+
+
+@admin.register(AdversaireSuivi)
+class AdversaireSuiviAdmin(LectureSeule):
+    list_display = ("equipe", "competition", "importe_le", "cree_le")
+    list_select_related = ("equipe", "competition")
 
 
 @admin.register(DonneesMatch)
