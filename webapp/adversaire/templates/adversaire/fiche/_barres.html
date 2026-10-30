@@ -1,0 +1,21 @@
+{% load l10n %}{% if lignes %}
+<table class="barres">
+  <tbody>
+    {% for l in lignes %}
+      <tr>
+        <th scope="row">{{ l.libelle }}</th>
+        <td class="barres-svg">
+          {% for s in l.series %}
+            {% localize off %}<svg class="barre" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="barre-{{ s.classe }}" x="0" y="0" width="{{ s.largeur }}" height="6"/></svg>{% endlocalize %}
+          {% endfor %}
+        </td>
+        <td class="barres-valeurs">
+          {% for s in l.series %}<span class="valeur-{{ s.classe }}">{% if s.valeur is None %}—{% else %}{{ s.valeur|floatformat:decimales }}{{ unite }}{% endif %}</span>{% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="vide">Aucune donnée.</p>
+{% endif %}

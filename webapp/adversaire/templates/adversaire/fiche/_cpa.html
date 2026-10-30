@@ -1,0 +1,51 @@
+{% load terrain %}
+<section class="carte bloc" id="cpa">
+  <h2>Coups de pied arrêtés</h2>
+  {% with c=valeurs.cpa %}
+    <dl class="chiffres">
+      <div><dt>Corners par match</dt><dd>{{ c.corners_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Coups francs par match</dt><dd>{{ c.coups_francs_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Corners concédés par match</dt><dd>{{ c.corners_concedes_par_match|floatformat:1|default:"—" }}</dd></div>
+    </dl>
+    <div class="defile">
+      <table class="matchs">
+        <thead>
+          <tr><th></th><th>Tirs pour</th><th>xG pour</th><th>Buts pour</th><th>Tirs contre</th><th>xG contre</th><th>Buts contre</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Sur corner</th>
+            <td>{{ c.pour.corner.tirs }}</td><td>{{ c.pour.corner.xg|floatformat:2|default:"—" }}</td><td>{{ c.pour.corner.buts }}</td>
+            <td>{{ c.contre.corner.tirs }}</td><td>{{ c.contre.corner.xg|floatformat:2|default:"—" }}</td><td>{{ c.contre.corner.buts }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Sur coup franc</th>
+            <td>{{ c.pour.coup_franc.tirs }}</td><td>{{ c.pour.coup_franc.xg|floatformat:2|default:"—" }}</td><td>{{ c.pour.coup_franc.buts }}</td>
+            <td>{{ c.contre.coup_franc.tirs }}</td><td>{{ c.contre.coup_franc.xg|floatformat:2|default:"—" }}</td><td>{{ c.contre.coup_franc.buts }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Tireurs</h3>
+    {% if c.tireurs %}
+      <div class="defile">
+        <table class="matchs">
+          <thead><tr><th>Joueur</th><th>Corners</th><th>Coups francs</th></tr></thead>
+          <tbody>
+            {% for t in c.tireurs %}
+              <tr><td>{{ t.nom|default:"Joueur sans nom" }}</td><td>{{ t.corners }}</td><td>{{ t.coups_francs }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="vide">Aucun tireur relevé.</p>
+    {% endif %}
+
+    <div class="grilles">
+      {% terrain_grille c.chutes_corners "Zones de chute de ses corners" 0 %}
+      {% terrain_grille c.chutes_corners_contre "Zones de chute des corners adverses (vers son but)" 0 %}
+    </div>
+  {% endwith %}
+</section>

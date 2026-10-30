@@ -51,9 +51,9 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
      - **3c-1 — fait** : indicateurs v2 (+ ajouts du propriétaire), table
        `FicheAdversaire` calculée à l'import, page `/adversaire/<id du suivi>/`
        avec Résultats et forme, Système et XI probable, Joueurs clés ;
-     - 3c-2 : affichage d'Attaque, Défense, Danger, Transitions, CPA et 360
-       (terrains SVG en grilles), SANS modèle ni migration : tout est déjà
-       dans `FicheAdversaire.valeurs`.
+     - **3c-2 — fait** (plan validé le 30/10/2026) : affichage d'Attaque,
+       Défense (avec Danger, Transitions, gardien), CPA et 360 (terrains SVG
+       en grilles, barres), SANS modèle ni migration ; `VERSION_FICHE = 2`.
    - Ensuite : **Après-match** (rapport d'après-match, sur la table de 3b).
 4. Second Spectrum (physique, rapprochement SS ↔ SB par date + équipes).
 5. Séquences horodatées, playlists, notes (sans vidéo).
@@ -241,6 +241,35 @@ python manage.py importer_adversaire --competition C --saison S --equipe E \
   (`templates/adversaire/fiche/`), réutilisable par l'Après-match.
 - **Base d'avant 3c-1** : `python manage.py migrate && python manage.py
   recalculer_indicateurs` (indicateurs v1 → v2 puis fiches), sans réseau.
+
+## Fiche adversaire, blocs d'analyse (étape 3c-2)
+
+- **`VERSION_FICHE = 2`**, trois règles calculées à l'IMPORT dans `fiche.py` :
+  1. grilles « contre » (`attaque.grille_tirs_xg_contre`,
+     `cpa.chutes_corners_contre`) lues chez l'équipe rencontrée puis
+     **retournées** (`fiche.retourner` : rotation de 180°, indice i → 95 − i),
+     pour être dessinées vers le but de l'adversaire ;
+  2. chaque grille porte `min_non_vide` et `max` (légende « de … à … ») ;
+  3. barres prêtes à dessiner (`fiche.largeurs` : entier de 0 à 100 rapporté
+     au maximum du bloc) : `danger.barres_xg` (pour et contre sur la MÊME
+     échelle) et `attaque.couloirs_barres`.
+  Base d'avant 3c-2 : `python manage.py recalculer_indicateurs` (fiches
+  seulement, ni réseau ni brut relu : `VERSION_CALCUL` reste à 2).
+- **Blocs** (un gabarit partiel chacun, `templates/adversaire/fiche/`) :
+  `_attaque.html`, `_defense.html` (ancres `#danger` et `#transitions`
+  dedans), `_cpa.html`, `_360.html` (affiché seulement si au moins un match a
+  du 360, « n matchs sur 5 avec 360 », comptes minimaux).
+- **SVG** : balises `terrain_grille(grille, libellé, décimales)` et
+  `barres(lignes, unité, décimales)` de `templatetags/terrain.py` (nombre
+  FIXE de décimales : 0 pour les comptes, 1 pour les %, 2 pour les xG ;
+  jamais `floatformat:"-2"`, qui écrivait « 0,10 ») — tri et CONTRÔLE seulement : niveaux
+  entiers 0 à 5 et 96 cases exactement (sinon « Aucune donnée »), largeurs
+  entières ramenées entre 0 et 100, classes de barre d'une liste fermée
+  (`pour`, `contre`). Seuls ces entiers et classes vont dans un attribut ;
+  les valeurs (texte des `<title>`, légendes) passent par `floatformat`,
+  échappées. Couleurs `niv-0` à `niv-5` (vert pâle → rouge) dans `app.css`.
+- ⚠️ `floatformat` localise TOUJOURS (virgule en fr), même sous
+  `{% localize off %}` : ne jamais l'employer dans un attribut SVG.
 
 ## Commandes
 

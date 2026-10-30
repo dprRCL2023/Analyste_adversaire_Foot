@@ -120,6 +120,20 @@ class RecalculTest(TestCase):
         self.assertEqual(f.version_fiche, fiche.VERSION_FICHE)
         self.assertEqual(f.valeurs["nb_matchs_calcules"], 2)
 
+    def test_fiche_v1_reconstruite_en_v2_sans_relire_le_brut(self):
+        """Étape 3c-2 : seules les règles de la fiche changent ; les indicateurs
+        v2 sont à jour, aucun calcul sur le brut ne doit être relancé."""
+        FicheAdversaire.objects.update(version_fiche=1)
+        with mock.patch("adversaire.analyse.indicateurs.calculer",
+                        side_effect=AssertionError("brut relu")):
+            sortie, erreurs = self.lancer()
+        self.assertIn("0 match(s) recalculé(s), 0 en échec, 0 sans brut.", sortie)
+        self.assertIn("1 fiche(s) reconstruite(s), 0 en échec.", sortie)
+        f = FicheAdversaire.objects.get()
+        self.assertEqual((f.version_fiche, f.valeurs["version_fiche"]), (2, 2))
+        self.assertIn("barres_xg", f.valeurs["danger"])
+        self.assertIn("min_non_vide", f.valeurs["cpa"]["chutes_corners_contre"])
+
     def test_echec_de_fiche_signale_sans_contenu_ancienne_gardee(self):
         avant = FicheAdversaire.objects.get().valeurs
         with mock.patch("adversaire.analyse.fiche.construire",

@@ -23,6 +23,10 @@
       <a href="#resultats">Résultats et forme</a>
       <a href="#systeme">Système et XI probable</a>
       <a href="#joueurs">Joueurs clés</a>
+      <a href="#attaque">Attaque</a>
+      <a href="#defense">Défense</a>
+      <a href="#cpa">Coups de pied arrêtés</a>
+      {% if valeurs.trois_cent_soixante %}<a href="#trois-cent-soixante">360</a>{% endif %}
     </nav>
   {% endif %}
 </section>
@@ -30,5 +34,9 @@
   {% include "adversaire/fiche/_resultats.html" %}
   {% include "adversaire/fiche/_systeme.html" %}
   {% include "adversaire/fiche/_joueurs.html" %}
+  {% include "adversaire/fiche/_attaque.html" %}
+  {% include "adversaire/fiche/_defense.html" %}
+  {% include "adversaire/fiche/_cpa.html" %}
+  {% include "adversaire/fiche/_360.html" %}
 {% endif %}
 {% endblock %}

@@ -1,0 +1,24 @@
+{% load terrain %}
+<section class="carte bloc" id="attaque">
+  <h2>Comment il attaque</h2>
+  {% with a=valeurs.attaque %}
+    <dl class="chiffres">
+      <div><dt>Possession</dt><dd>{% if a.possession_pct is not None %}{{ a.possession_pct|floatformat:1 }} %{% else %}—{% endif %}</dd></div>
+      <div><dt>Passes par match</dt><dd>{{ a.passes_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Réussite des passes</dt><dd>{% if a.reussite_passes_pct is not None %}{{ a.reussite_passes_pct|floatformat:1 }} %{% else %}—{% endif %}</dd></div>
+      <div><dt>Passes progressives par match</dt><dd>{{ a.passes_progressives_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Conduites progressives par match</dt><dd>{{ a.conduites_progressives_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Entrées dans le dernier tiers par match</dt><dd>{{ a.entrees_dernier_tiers_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Entrées dans la surface par match</dt><dd>{{ a.entrees_surface_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Centres par match</dt><dd>{{ a.centres_par_match|floatformat:1|default:"—" }}</dd></div>
+    </dl>
+
+    <h3>Couloirs utilisés</h3>
+    {% barres a.couloirs_barres " %" 1 %}
+
+    <div class="grilles">
+      {% terrain_grille a.grille_progression "Arrivées des actions progressives" 0 %}
+      {% terrain_grille a.grille_tirs_xg_pour "xG de ses tirs par zone" 2 %}
+    </div>
+  {% endwith %}
+</section>

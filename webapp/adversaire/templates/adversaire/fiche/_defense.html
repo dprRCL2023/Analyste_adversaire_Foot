@@ -1,0 +1,75 @@
+{% load terrain %}
+<section class="carte bloc" id="defense">
+  <h2>Comment il défend</h2>
+  {% with d=valeurs.defense %}
+    <dl class="chiffres">
+      <div><dt>PPDA</dt><dd>{{ d.ppda|floatformat:2|default:"—" }}</dd></div>
+      <div><dt>Pressions par match</dt><dd>{{ d.pressions_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Contre-pressing par match</dt><dd>{{ d.contre_pressing_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Hauteur moyenne des actions défensives</dt><dd>{% if d.hauteur_actions_defensives is not None %}x = {{ d.hauteur_actions_defensives|floatformat:1 }} sur 120{% else %}—{% endif %}</dd></div>
+      <div><dt>Récupérations par match</dt><dd>{{ d.recuperations_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>dont hautes</dt><dd>{{ d.recuperations_hautes_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>Pertes par match</dt><dd>{{ d.pertes_par_match|floatformat:1|default:"—" }}</dd></div>
+      <div><dt>xG concédé par tir</dt><dd>{{ d.xg_par_tir_contre|floatformat:2|default:"—" }}</dd></div>
+    </dl>
+    <p class="aide">PPDA : passes adverses dans leurs 60 % de terrain ÷ ses actions défensives dans la même zone, sur le total des matchs.</p>
+
+    <div class="grilles">
+      {% terrain_grille d.grille_recuperations "Zones de récupération" 0 %}
+      {% terrain_grille d.grille_pertes "Zones de perte" 0 %}
+      {% terrain_grille valeurs.attaque.grille_tirs_xg_contre "xG concédé par zone (vers son but)" 2 %}
+    </div>
+
+    <h3>Gardien</h3>
+    {% with g=d.gardien %}
+      <dl class="chiffres">
+        <div><dt>Tirs cadrés subis</dt><dd>{{ g.tirs_cadres_subis|default_if_none:"—" }}</dd></div>
+        <div><dt>Arrêts</dt><dd>{{ g.arrets|default_if_none:"—" }}</dd></div>
+        <div><dt>% d'arrêts</dt><dd>{% if g.arrets_pct is not None %}{{ g.arrets_pct|floatformat:1 }} %{% else %}—{% endif %}</dd></div>
+        <div><dt>PSxG</dt><dd>{% if g.psxg is not None %}{{ g.psxg|floatformat:2 }}{% else %}non disponible{% endif %}</dd></div>
+        <div><dt>PSxG − buts</dt><dd>{% if g.psxg_moins_buts is not None %}{{ g.psxg_moins_buts|floatformat:2 }}{% else %}non disponible{% endif %}</dd></div>
+      </dl>
+      {% if g.psxg is not None %}<p class="aide">PSxG fourni sur {{ g.matchs_psxg }} match{{ g.matchs_psxg|pluralize }} ; PSxG − buts &gt; 0 : le gardien a encaissé moins que prévu.</p>{% endif %}
+    {% endwith %}
+  {% endwith %}
+
+  {% with dg=valeurs.danger %}
+    <h3 id="danger">Quand il est dangereux</h3>
+    <p class="aide">xG par tranche de 15 minutes, sur le total des matchs : <span class="valeur-pour">pour</span>, <span class="valeur-contre">contre</span>.</p>
+    {% barres dg.barres_xg "" 2 %}
+    {% if dg.tranches %}
+      <div class="defile">
+        <table class="matchs">
+          <thead><tr><th>Tranche</th><th>Buts pour</th><th>Buts contre</th></tr></thead>
+          <tbody>
+            {% for t in dg.tranches %}<tr><th scope="row">{{ t.tranche }}</th><td>{{ t.buts_pour }}</td><td>{{ t.buts_contre }}</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    <h4>Hauteur des actions défensives selon le score (x sur 120, son but en 0)</h4>
+    <ul class="selon-score">
+      {% for e in dg.hauteur_par_score %}
+        <li>{{ e.libelle }} : {% if e.hauteur is not None %}x = {{ e.hauteur|floatformat:1 }}{% else %}—{% endif %} <span class="aide">({{ e.actions }} action{{ e.actions|pluralize }})</span></li>
+      {% endfor %}
+    </ul>
+  {% endwith %}
+
+  {% with t=valeurs.transitions %}
+    <h3 id="transitions">Transitions</h3>
+    <p class="aide">Tirs dans les {{ t.fenetre_secondes }} secondes qui suivent une récupération (pour) ou une perte (contre).</p>
+    <div class="defile">
+      <table class="matchs">
+        <thead><tr><th></th><th>Récupérations</th><th>Tirs</th><th>Tirs par match</th><th>xG</th><th>xG par match</th><th>Buts</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Pour</th><td>{{ t.pour.recuperations }}</td><td>{{ t.pour.tirs }}</td><td>{{ t.pour.tirs_par_match|floatformat:2|default:"—" }}</td><td>{{ t.pour.xg|floatformat:2|default:"—" }}</td><td>{{ t.pour.xg_par_match|floatformat:2|default:"—" }}</td><td>{{ t.pour.buts }}</td></tr>
+          <tr><th scope="row">Contre</th><td>{{ t.contre.recuperations }}</td><td>{{ t.contre.tirs }}</td><td>{{ t.contre.tirs_par_match|floatformat:2|default:"—" }}</td><td>{{ t.contre.xg|floatformat:2|default:"—" }}</td><td>{{ t.contre.xg_par_match|floatformat:2|default:"—" }}</td><td>{{ t.contre.buts }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Pertes suivies d'un tir adverse : <strong>{{ t.pertes_vers_tir|default_if_none:"—" }}</strong></p>
+    <div class="grilles">
+      {% terrain_grille t.grille_pertes_vers_tir "Pertes suivies d'un tir adverse" 0 %}
+    </div>
+  {% endwith %}
+</section>

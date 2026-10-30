@@ -22,7 +22,9 @@ from collections import Counter
 
 from .indicateurs import COLONNES, ETATS_SCORE, RANGEES, TRANCHES_15
 
-VERSION_FICHE = 1
+# 2 (étape 3c-2) : grilles « contre » retournées dans le repère de l'adversaire,
+# bornes de légende des grilles, largeurs des barres (tranches de 15 min, couloirs).
+VERSION_FICHE = 2
 
 SEUIL_PEU_JOUE = 90  # minutes cumulées sur les matchs de la fiche
 NB_XI = 11
@@ -47,6 +49,7 @@ LIBELLES_MOTIFS = [
 ]
 CHAMPS_MOTIF = ("tirs_pour", "buts_pour", "xg_pour", "tirs_contre", "buts_contre", "xg_contre")
 LIBELLES_ETATS = {"mene": "Mène", "egalite": "Égalité", "est_mene": "Mené"}
+LIBELLES_COULOIRS = {"gauche": "Gauche", "axe": "Axe", "droite": "Droite"}
 LIBELLES_PRESSION = [
     ("0", "Aucun adversaire à moins de 5 m"),
     ("1", "1 adversaire à moins de 5 m"),
@@ -159,8 +162,18 @@ def niveaux(grille):
     return resultat
 
 
-def _grille(elements, cote, *chemin):
-    """{"valeurs", "niveaux"} : grilles additionnées case par case."""
+def retourner(grille):
+    """Rotation de 180° d'une grille 12 × 8 : la case (rangée r, colonne c)
+    devient (7 − r, 11 − c), soit l'indice i → 95 − i. Une grille lue chez
+    l'équipe rencontrée (qui attaque vers x = 120 dans SES événements) passe
+    ainsi dans le repère de l'adversaire."""
+    return list(reversed(grille))
+
+
+def _grille(elements, cote, *chemin, retourne=False):
+    """{"valeurs", "niveaux", "min_non_vide", "max"} : grilles additionnées
+    case par case ; `retourne` pour une grille lue chez l'équipe rencontrée.
+    Les bornes servent à la légende (« de … à … ») : le gabarit ne calcule rien."""
     total = [0] * TAILLE_GRILLE
     for e in elements:
         grille = _liste(_val(e[cote], *chemin))
@@ -171,7 +184,22 @@ def _grille(elements, cote, *chemin):
             if v is not None:
                 total[i] += v
     total = [round(v, 3) if isinstance(v, float) else v for v in total]
-    return {"valeurs": total, "niveaux": niveaux(total)}
+    if retourne:
+        total = retourner(total)
+    non_vides = [v for v in total if v > 0]
+    return {"valeurs": total, "niveaux": niveaux(total),
+            "min_non_vide": min(non_vides) if non_vides else None,
+            "max": max(non_vides) if non_vides else None}
+
+
+def largeurs(valeurs):
+    """Largeur entière de 0 à 100 de chaque barre, rapportée au maximum de la
+    série ; 0 si la valeur est absente ou si le maximum est nul."""
+    nombres = [_num(v) for v in valeurs]
+    maximum = max((v for v in nombres if v is not None), default=0)
+    if maximum <= 0:
+        return [0] * len(nombres)
+    return [max(0, round(100 * v / maximum)) if v is not None else 0 for v in nombres]
 
 
 # ── Résultats et forme ───────────────────────────────────────────────────────
@@ -438,6 +466,8 @@ def _attaque(elements):
     passes_adverses = _somme(elements, "contre", "attaque", "passes")
     couloirs = {c: s("couloirs", c) for c in ("gauche", "axe", "droite")}
     total_couloirs = sum(couloirs.values())
+    couloirs_pct = {c: _pct(v, total_couloirs) for c, v in couloirs.items()}
+    largeurs_couloirs = largeurs(list(couloirs_pct.values()))
     return {
         "possession_pct": _pct(passes, passes + passes_adverses),
         "passes_par_match": _par_match(passes, n),
@@ -447,10 +477,16 @@ def _attaque(elements):
         "entrees_dernier_tiers_par_match": _par_match(s("entrees_dernier_tiers"), n),
         "entrees_surface_par_match": _par_match(s("entrees_surface"), n),
         "centres_par_match": _par_match(s("centres"), n),
-        "couloirs_pct": {c: _pct(v, total_couloirs) for c, v in couloirs.items()},
+        "couloirs_pct": couloirs_pct,
+        # Barres prêtes à dessiner : largeur rapportée au couloir le plus utilisé.
+        "couloirs_barres": [
+            {"libelle": LIBELLES_COULOIRS[c], "series": [
+                {"classe": "pour", "valeur": couloirs_pct[c], "largeur": largeur}]}
+            for c, largeur in zip(couloirs_pct, largeurs_couloirs)],
         "grille_progression": _grille(elements, "pour", "attaque", "grille_progression"),
         "grille_tirs_xg_pour": _grille(elements, "pour", "attaque", "grille_tirs_xg"),
-        "grille_tirs_xg_contre": _grille(elements, "contre", "attaque", "grille_tirs_xg"),
+        # Tirs concédés : lus chez l'équipe rencontrée, retournés vers le but de l'adversaire.
+        "grille_tirs_xg_contre": _grille(elements, "contre", "attaque", "grille_tirs_xg", retourne=True),
     }
 
 
@@ -503,13 +539,20 @@ def _danger(elements):
             total = sum(_a_l_indice(_val(e["pour"], "danger", cle), i) for e in elements)
             ligne[cle] = _r(total) if cle.startswith("xg") else total
         tranches.append(ligne)
+    # Barres doubles (pour, contre) sur une même échelle : le maximum du bloc.
+    echelle = largeurs([t["xg_pour"] for t in tranches] + [t["xg_contre"] for t in tranches])
+    n = len(tranches)
+    barres = [{"libelle": t["tranche"], "series": [
+        {"classe": "pour", "valeur": t["xg_pour"], "largeur": echelle[i]},
+        {"classe": "contre", "valeur": t["xg_contre"], "largeur": echelle[n + i]}]}
+        for i, t in enumerate(tranches)]
     par_score = []
     for etat in ETATS_SCORE:
         actions = _somme(elements, "pour", "danger", "hauteur_par_score", etat, "actions")
         somme = _somme(elements, "pour", "danger", "hauteur_par_score", etat, "somme_hauteur")
         par_score.append({"etat": etat, "libelle": LIBELLES_ETATS[etat], "actions": actions,
                           "hauteur": _ratio(somme, actions, 1)})
-    return {"tranches": tranches, "hauteur_par_score": par_score}
+    return {"tranches": tranches, "barres_xg": barres, "hauteur_par_score": par_score}
 
 
 def _transitions(elements):
@@ -566,7 +609,8 @@ def _cpa(elements):
         "tireurs": sorted(tireurs.values(),
                           key=lambda t: (-(t["corners"] + t["coups_francs"]), t["nom"], t["id"]))[:NB_TIREURS],
         "chutes_corners": _grille(elements, "pour", "cpa", "chutes_corners"),
-        "chutes_corners_contre": _grille(elements, "contre", "cpa", "chutes_corners"),
+        # Corners adverses : lus chez l'équipe rencontrée, retournés (repère de l'adversaire).
+        "chutes_corners_contre": _grille(elements, "contre", "cpa", "chutes_corners", retourne=True),
     }
 
 

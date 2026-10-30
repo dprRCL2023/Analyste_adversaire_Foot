@@ -131,3 +131,49 @@ button {
 .terrain .trait { fill: none; stroke: #fff; stroke-width: .5; }
 .terrain .joueur circle { fill: var(--sand); stroke: var(--night); stroke-width: .5; }
 .terrain .joueur text { fill: var(--night); font-size: 3.4px; font-weight: 700; }
+
+/* Blocs Attaque, Défense, CPA, 360 (étape 3c-2) */
+.chiffres {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.chiffres div { padding: 8px 10px; background: var(--fond); border-radius: 6px; }
+.chiffres dt { color: var(--gris); font-size: 13px; }
+.chiffres dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; }
+.grilles { display: flex; flex-wrap: wrap; gap: 16px; }
+.grille { flex: 1 1 280px; max-width: 460px; margin: 0; }
+.grille figcaption { font-weight: 600; margin-bottom: 4px; }
+.legende { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--gris); font-size: 13px; }
+.echelle { display: inline-flex; }
+.pastille { display: inline-block; width: 14px; height: 10px; }
+/* Grille de chaleur : terrain clair, du vert pâle (niv-1) au rouge (niv-5). */
+.terrain-grille .pelouse { fill: #F7F6F2; stroke: var(--gris); stroke-width: .5; }
+.terrain-grille .trait { stroke: var(--gris); }
+.case { stroke: #fff; stroke-width: .2; }
+.niv-0 { fill: transparent; }
+.niv-1 { fill: #D9EFC9; background: #D9EFC9; }
+.niv-2 { fill: #F2E39A; background: #F2E39A; }
+.niv-3 { fill: #F5B865; background: #F5B865; }
+.niv-4 { fill: #E8783F; background: #E8783F; }
+.niv-5 { fill: #C0392B; background: #C0392B; }
+.barres { width: 100%; border-collapse: collapse; }
+.barres th { width: 80px; text-align: left; color: var(--gris); font-weight: 600; padding: 4px 8px 4px 0; }
+.barres td { padding: 4px 0; }
+.barres-svg { width: 70%; }
+.barres-valeurs { padding-left: 8px; white-space: nowrap; }
+.barres-valeurs span { display: block; }
+.barre { display: block; width: 100%; height: 10px; margin: 2px 0; background: var(--fond); }
+.barre-pour { fill: var(--night); }
+.barre-contre { fill: #C0392B; }
+.valeur-pour { color: var(--night); font-weight: 600; }
+.valeur-contre { color: #A12A2A; font-weight: 600; }
+.selon-score { margin: 0 0 8px; }
+.deux-colonnes { display: flex; flex-wrap: wrap; gap: 16px; }
+.deux-colonnes > div { flex: 1 1 260px; }
+@media (max-width: 600px) {
+  .chiffres { grid-template-columns: 1fr 1fr; }
+  .chiffres dd { font-size: 16px; }
+  .barres th { width: 56px; }
+}

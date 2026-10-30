@@ -1,0 +1,25 @@
+{% load l10n %}<figure class="grille">
+  <figcaption>{{ libelle }}</figcaption>
+  {% if vide %}
+    <p class="vide">Aucune donnée.</p>
+  {% else %}
+    {% localize off %}
+    <svg class="terrain terrain-grille" viewBox="-2 -2 124 84" role="img" aria-label="{{ libelle }}, attaque vers la droite">
+      <rect class="pelouse" x="0" y="0" width="120" height="80"/>
+      {% for c in cases %}
+        <rect class="case niv-{{ c.niveau }}" x="{{ c.x }}" y="{{ c.y }}" width="10" height="10">{% localize on %}<title>{{ c.valeur|floatformat:decimales|default:"—" }}</title>{% endlocalize %}</rect>
+      {% endfor %}
+      <line class="trait" x1="60" y1="0" x2="60" y2="80"/>
+      <circle class="trait" cx="60" cy="40" r="10"/>
+      <rect class="trait" x="0" y="18" width="18" height="44"/>
+      <rect class="trait" x="102" y="18" width="18" height="44"/>
+      <rect class="trait" x="0" y="30" width="6" height="20"/>
+      <rect class="trait" x="114" y="30" width="6" height="20"/>
+    </svg>
+    {% endlocalize %}
+    <p class="legende">
+      <span class="echelle">{% for n in "12345" %}<span class="pastille niv-{{ n }}"></span>{% endfor %}</span>
+      de {{ min_non_vide|floatformat:decimales|default:"—" }} à {{ max|floatformat:decimales|default:"—" }} · attaque vers la droite
+    </p>
+  {% endif %}
+</figure>

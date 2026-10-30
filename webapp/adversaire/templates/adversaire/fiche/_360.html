@@ -1,0 +1,96 @@
+{% with t=valeurs.trois_cent_soixante %}{% if t %}
+<section class="carte bloc" id="trois-cent-soixante">
+  <h2>Analyses 360</h2>
+  <p class="aide">{{ t.matchs_avec_360 }} match{{ t.matchs_avec_360|pluralize }} sur {{ valeurs.nb_matchs }} avec 360.
+    Comptes minimaux : le 360 ne voit que les joueurs à l'image.</p>
+
+  <dl class="chiffres">
+    <div><dt>Passes qui cassent une ligne par match</dt><dd>{{ t.passes_cassant_une_ligne_par_match|floatformat:1|default:"—" }}</dd></div>
+    <div><dt>Réceptions dans l'espace</dt><dd>{% if t.receptions_dans_l_espace_pct is not None %}{{ t.receptions_dans_l_espace_pct|floatformat:1 }} %{% else %}—{% endif %}</dd></div>
+    <div><dt>Passes qui éliminent 5 adversaires par match</dt><dd>{{ t.passes_5_elimines_par_match|floatformat:1|default:"—" }}</dd></div>
+    <div><dt>Réceptions entre les lignes par match</dt><dd>{{ t.receptions_entre_lignes_par_match|floatformat:1|default:"—" }}</dd></div>
+  </dl>
+
+  <h3>Relance sous pression</h3>
+  <p>Passes depuis son tiers sans adversaire à moins de 5 m :
+    <strong>{% if t.relance.sans_adversaire_pct is not None %}{{ t.relance.sans_adversaire_pct|floatformat:1 }} %{% else %}—{% endif %}</strong>
+    <span class="aide">({{ t.relance.passes }} passe{{ t.relance.passes|pluralize }})</span></p>
+  <div class="defile">
+    <table class="matchs">
+      <thead><tr><th>Pression</th><th>Passes</th><th>Part</th><th>Réussite</th><th>Vers l'avant</th></tr></thead>
+      <tbody>
+        {% for p in t.relance.paliers %}
+          <tr>
+            <th scope="row">{{ p.libelle }}</th><td>{{ p.passes }}</td>
+            <td>{% if p.part_pct is not None %}{{ p.part_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+            <td>{% if p.reussite_pct is not None %}{{ p.reussite_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+            <td>{% if p.vers_l_avant_pct is not None %}{{ p.vers_l_avant_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Son gardien sous pression</h3>
+  <div class="defile">
+    <table class="matchs">
+      <thead><tr><th>Situation</th><th>Passes</th><th>Longues</th><th>Part de jeu long</th><th>Réussite des longs ballons</th></tr></thead>
+      <tbody>
+        {% for g in t.gardien %}
+          <tr>
+            <th scope="row">{{ g.libelle }}</th><td>{{ g.passes }}</td><td>{{ g.longues }}</td>
+            <td>{% if g.part_longues_pct is not None %}{{ g.part_longues_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+            <td>{% if g.reussite_longues_pct is not None %}{{ g.reussite_longues_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="aide">Ballon long : 32 m et plus.</p>
+
+  <h3>Ligne défensive selon le score</h3>
+  <ul class="selon-score">
+    {% for e in t.ligne_defensive_par_score %}
+      <li>{{ e.libelle }} : {% if e.hauteur is not None %}x = {{ e.hauteur|floatformat:1 }}{% else %}—{% endif %} <span class="aide">({{ e.images }} image{{ e.images|pluralize }})</span></li>
+    {% endfor %}
+  </ul>
+  <p class="aide">Moyenne de ses 4 joueurs de champ les plus reculés (x sur 120, son but en 0).</p>
+
+  <h3>Présence sur corner</h3>
+  <div class="defile">
+    <table class="matchs">
+      <thead><tr><th></th><th>Corners</th><th>Attaquants dans les 6 m</th><th>Défenseurs dans les 6 m</th><th>Attaquants dans la surface</th><th>Défenseurs dans la surface</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Ses corners</th><td>{{ t.corners_pour.corners }}</td>
+          <td>{{ t.corners_pour.attaquants_6m|floatformat:1|default:"—" }}</td><td>{{ t.corners_pour.defenseurs_6m|floatformat:1|default:"—" }}</td>
+          <td>{{ t.corners_pour.attaquants_surface|floatformat:1|default:"—" }}</td><td>{{ t.corners_pour.defenseurs_surface|floatformat:1|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Corners adverses</th><td>{{ t.corners_contre.corners }}</td>
+          <td>{{ t.corners_contre.attaquants_6m|floatformat:1|default:"—" }}</td><td>{{ t.corners_contre.defenseurs_6m|floatformat:1|default:"—" }}</td>
+          <td>{{ t.corners_contre.attaquants_surface|floatformat:1|default:"—" }}</td><td>{{ t.corners_contre.defenseurs_surface|floatformat:1|default:"—" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="aide">Moyenne par corner, joueurs de champ au moment du corner.</p>
+
+  {% with j=valeurs.joueurs %}
+    <div class="deux-colonnes">
+      <div>
+        <h3>Passes qui éliminent 5 adversaires</h3>
+        {% if j.eliminateurs %}
+          <ol>{% for x in j.eliminateurs %}<li>{{ x.nom|default:"Joueur sans nom" }} : {{ x.passes_5_elimines }}</li>{% endfor %}</ol>
+        {% else %}<p class="vide">Aucune.</p>{% endif %}
+      </div>
+      <div>
+        <h3>Réceptions entre les lignes</h3>
+        {% if j.entre_les_lignes %}
+          <ol>{% for x in j.entre_les_lignes %}<li>{{ x.nom|default:"Joueur sans nom" }} : {{ x.receptions_entre_lignes }}</li>{% endfor %}</ol>
+        {% else %}<p class="vide">Aucune.</p>{% endif %}
+      </div>
+    </div>
+  {% endwith %}
+</section>
+{% endif %}{% endwith %}

@@ -249,6 +249,149 @@ class TroisCentSoixanteTest(SimpleTestCase):
         self.assertIsNone(valeurs["trois_cent_soixante"])
 
 
+class Version2Test(SimpleTestCase):
+    """Étape 3c-2 (`VERSION_FICHE = 2`) : chaque valeur attendue est un LITTÉRAL
+    calculé à la main dans le commentaire, jamais recalculé par le code testé."""
+
+    def test_version_de_fiche(self):
+        self.assertEqual(fiche.VERSION_FICHE, 2)
+        self.assertEqual(fiche.construire([])["version_fiche"], 2)
+
+    def test_ppda_rapport_des_sommes_bloc_defense(self):
+        valeurs = fiche.construire([
+            element(0, {"defense": {"ppda_passes_adverses": 30, "ppda_actions": 4}}),
+            element(1, {"defense": {"ppda_passes_adverses": 20, "ppda_actions": 6}}),
+        ])
+        # 50 / 10 = 5.0, et non la moyenne des ratios (7,5 + 3,33) / 2 = 5,42.
+        self.assertEqual(valeurs["defense"]["ppda"], 5.0)
+
+    def test_possession_et_passes_par_match(self):
+        valeurs = fiche.construire([
+            element(0, {"attaque": {"passes": 300}}, {"attaque": {"passes": 200}}),
+            element(1, {"attaque": {"passes": 200}}, {"attaque": {"passes": 300}}),
+        ])
+        # 500 / (500 + 500) ; 500 passes en 2 matchs.
+        self.assertEqual(valeurs["attaque"]["possession_pct"], 50.0)
+        self.assertEqual(valeurs["attaque"]["passes_par_match"], 250.0)
+
+    def test_couloirs_et_largeurs_des_barres(self):
+        valeurs = fiche.construire([element(0, {"attaque": {"couloirs": {"gauche": 10, "axe": 20,
+                                                                          "droite": 10}}})])
+        a = valeurs["attaque"]
+        self.assertEqual(a["couloirs_pct"], {"gauche": 25.0, "axe": 50.0, "droite": 25.0})
+        self.assertEqual([(b["libelle"], b["series"][0]["classe"], b["series"][0]["valeur"],
+                           b["series"][0]["largeur"]) for b in a["couloirs_barres"]],
+                         [("Gauche", "pour", 25.0, 50), ("Axe", "pour", 50.0, 100),
+                          ("Droite", "pour", 25.0, 50)])
+
+    def test_couloirs_vides_barres_nulles(self):
+        barres = fiche.construire([element(0, {})])["attaque"]["couloirs_barres"]
+        self.assertEqual([(b["series"][0]["valeur"], b["series"][0]["largeur"]) for b in barres],
+                         [(None, 0), (None, 0), (None, 0)])
+
+    def test_largeurs(self):
+        self.assertEqual(fiche.largeurs([0.2, 0, 0.5]), [40, 0, 100])
+        self.assertEqual(fiche.largeurs([None, 0, 3]), [0, 0, 100])
+        self.assertEqual(fiche.largeurs([0, 0]), [0, 0])
+        self.assertEqual(fiche.largeurs([]), [])
+        self.assertEqual(fiche.largeurs(["x", float("inf"), 4]), [0, 0, 100])
+
+    def test_tranches_de_15_minutes_meme_echelle_pour_et_contre(self):
+        valeurs = fiche.construire([element(0, {"danger": {
+            "xg_pour": [0.2, 0, 0.5, 0, 0, 0, 0],
+            "xg_contre": [0.1, 0, 0, 0, 0, 0, 0.25],
+            "buts_pour": [0, 0, 1, 0, 0, 0, 0]}})])
+        barres = valeurs["danger"]["barres_xg"]
+        self.assertEqual([b["libelle"] for b in barres],
+                         ["0-15", "15-30", "30-45+", "45-60", "60-75", "75-90+", "prol."])
+        # Maximum du bloc : 0,5 (pour, 30-45+).
+        self.assertEqual([b["series"][0]["largeur"] for b in barres], [40, 0, 100, 0, 0, 0, 0])
+        self.assertEqual([b["series"][1]["largeur"] for b in barres], [20, 0, 0, 0, 0, 0, 50])
+        self.assertEqual((barres[0]["series"][0]["classe"], barres[0]["series"][1]["classe"]),
+                         ("pour", "contre"))
+        self.assertEqual(barres[2]["series"][0]["valeur"], 0.5)
+        self.assertEqual(valeurs["danger"]["tranches"][2]["buts_pour"], 1)
+
+    def test_grilles_contre_retournees_vers_le_but_de_l_adversaire(self):
+        tirs = [0] * 96
+        tirs[0] = 0.4
+        corners = [0] * 96
+        corners[13] = 2  # rangée 1, colonne 1
+        valeurs = fiche.construire([element(0, {"attaque": {"grille_tirs_xg": tirs}},
+                                            {"attaque": {"grille_tirs_xg": tirs},
+                                             "cpa": {"chutes_corners": corners}})])
+        contre = valeurs["attaque"]["grille_tirs_xg_contre"]
+        self.assertEqual((contre["valeurs"][95], contre["valeurs"][0]), (0.4, 0))
+        self.assertEqual((contre["niveaux"][95], contre["min_non_vide"], contre["max"]), (5, 0.4, 0.4))
+        # La grille « pour » n'est pas retournée.
+        self.assertEqual(valeurs["attaque"]["grille_tirs_xg_pour"]["valeurs"][0], 0.4)
+        # (rangée 1, colonne 1) → (6, 10) : 6 × 12 + 10 = 82.
+        chutes = valeurs["cpa"]["chutes_corners_contre"]
+        self.assertEqual((chutes["valeurs"][82], chutes["valeurs"][13]), (2, 0))
+
+    def test_retourner(self):
+        self.assertEqual(fiche.retourner(list(range(96)))[:3], [95, 94, 93])
+        self.assertEqual(fiche.retourner(list(range(96)))[95], 0)
+
+    def test_niveaux_et_legende(self):
+        self.assertEqual(fiche.niveaux([0, 1, 2, 3, 4, 5]), [0, 1, 2, 3, 4, 5])
+        self.assertEqual(fiche.niveaux([0, 7]), [0, 5])
+        self.assertEqual(fiche.niveaux([2, 2, 1]), [5, 5, 1])
+        progression = fiche.construire([element(0, {"attaque": {
+            "grille_progression": [0, 1, 2, 3, 4, 5] + [0] * 90}})])["attaque"]["grille_progression"]
+        self.assertEqual((progression["min_non_vide"], progression["max"]), (1, 5))
+        self.assertEqual(progression["niveaux"][:6], [0, 1, 2, 3, 4, 5])
+
+    def test_grille_vide_sans_bornes(self):
+        vide = fiche.construire([element(0, {})])["defense"]["grille_pertes"]
+        self.assertEqual((vide["min_non_vide"], vide["max"], vide["niveaux"]), (None, None, [0] * 96))
+
+    def test_transitions_par_match(self):
+        valeurs = fiche.construire([
+            element(0, {"transitions": {"pour": {"tirs": 3, "xg": 0.3}}}),
+            element(1, {"transitions": {"pour": {"tirs": 1, "xg": 0.1}}}),
+        ])
+        t = valeurs["transitions"]["pour"]
+        # 4 tirs et 0,4 xG en 2 matchs.
+        self.assertEqual((t["tirs"], t["tirs_par_match"], t["xg_par_match"]), (4, 2.0, 0.2))
+
+    def test_gardien_avec_et_sans_psxg(self):
+        g = fiche.construire([element(0, {"gardien": {"tirs_cadres_subis": 8, "arrets": 6, "psxg": 2.4,
+                                                      "buts_encaisses_sur_tir": 2}})])["defense"]["gardien"]
+        # 6 / 8 = 75 % ; 2,4 − 2 = 0,4.
+        self.assertEqual((g["arrets_pct"], g["psxg"], g["psxg_moins_buts"], g["matchs_psxg"]),
+                         (75.0, 2.4, 0.4, 1))
+        g = fiche.construire([element(0, {"gardien": {"tirs_cadres_subis": 8,
+                                                      "arrets": 6}})])["defense"]["gardien"]
+        self.assertEqual((g["psxg"], g["psxg_moins_buts"], g["matchs_psxg"]), (None, None, 0))
+
+    def test_360_relance_gardien_corners_sur_un_match_sur_deux(self):
+        bloc = {
+            "relance": {"passes": 40, "par_pression": {
+                "0": {"passes": 20, "reussies": 18, "vers_l_avant": 10},
+                "1": {"passes": 12, "reussies": 9, "vers_l_avant": 3},
+                "2+": {"passes": 8, "reussies": 4, "vers_l_avant": 2}}},
+            "gardien_sous_pression": {"sous_pression": {"passes": 10, "longues": 6, "longues_reussies": 3}},
+            "corners_pour": {"corners": 4, "attaquants_6m": 10},
+        }
+        valeurs = fiche.construire([element(0, {"trois_cent_soixante": bloc}),
+                                    element(1, {"trois_cent_soixante": None})])
+        t = valeurs["trois_cent_soixante"]
+        self.assertEqual((valeurs["matchs_avec_360"], t["matchs_avec_360"]), (1, 1))
+        # 20 passes sans adversaire sur 40 ; réussites 18/20, 9/12, 4/8.
+        self.assertEqual(t["relance"]["sans_adversaire_pct"], 50.0)
+        self.assertEqual([p["reussite_pct"] for p in t["relance"]["paliers"]], [90.0, 75.0, 50.0])
+        self.assertEqual([p["vers_l_avant_pct"] for p in t["relance"]["paliers"]], [50.0, 25.0, 25.0])
+        # 6 longues sur 10, 3 réussies sur 6.
+        self.assertEqual((t["gardien"][0]["part_longues_pct"], t["gardien"][0]["reussite_longues_pct"]),
+                         (60.0, 50.0))
+        self.assertEqual((t["gardien"][1]["part_longues_pct"], t["gardien"][1]["reussite_longues_pct"]),
+                         (None, None))
+        # 10 attaquants sur 4 corners.
+        self.assertEqual(t["corners_pour"]["attaquants_6m"], 2.5)
+        self.assertIsNone(fiche.construire([element(0, {"trois_cent_soixante": None})])["trois_cent_soixante"])
+
+
 class RobustesseTest(SimpleTestCase):
     def test_matchs_sans_lignes_ecartes(self):
         elements = [element(i, {"resultat": {"buts_pour": 1}}) for i in range(4)]

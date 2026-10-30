@@ -3,12 +3,14 @@
 Appli interne de l'USL Dunkerque pour préparer l'adversaire du week-end à
 partir des données StatsBomb et Second Spectrum. Connexion obligatoire.
 
-État : **étape 3c-1** : squelette (connexion, sécurité, Docker), import
+État : **étape 3c-2** : squelette (connexion, sécurité, Docker), import
 StatsBomb des derniers matchs d'un adversaire (ligne de commande), rôles,
 page « Adversaire du week-end » (5 derniers matchs importés, forme, bilan,
 xG pour et contre), indicateurs de chaque match calculés à l'import, et
 fiche de l'adversaire (résultats et forme, système et XI probable, joueurs
-clés). Le détail et la suite sont dans `CLAUDE.md`.
+clés, comment il attaque, comment il défend, quand il est dangereux,
+transitions, coups de pied arrêtés, analyses 360 si disponibles, avec
+terrains en grilles de chaleur). Le détail et la suite sont dans `CLAUDE.md`.
 
 ## Comptes et rôles
 
@@ -64,6 +66,13 @@ Après la mise à jour qui l'a introduite (base existante) :
 ```bash
 python manage.py migrate && python manage.py recalculer_indicateurs
 ```
+
+Après la mise à jour des blocs Attaque, Défense, CPA et 360 (étape 3c-2), les
+fiches existantes affichent le bandeau : `python manage.py recalculer_indicateurs`
+suffit (ni réseau, ni relecture du brut).
+
+Sur les terrains, l'adversaire attaque toujours vers la droite ; les tirs et
+corners concédés sont donc dessinés vers SON but, à gauche.
 
 ## Démarrer en local
 
