@@ -4,7 +4,8 @@ rien ne se saisit ni ne se supprime ici. Le brut compressé n'est jamais affich�
 from django.contrib import admin
 from django.db.models import BooleanField, ExpressionWrapper, Q
 
-from .models import AdversaireSuivi, Competition, DonneesMatch, Equipe, Match
+from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, IndicateursMatchEquipe,
+                     Match)
 
 
 class LectureSeule(admin.ModelAdmin):
@@ -42,6 +43,20 @@ class MatchAdmin(LectureSeule):
 class AdversaireSuiviAdmin(LectureSeule):
     list_display = ("equipe", "competition", "importe_le", "cree_le")
     list_select_related = ("equipe", "competition")
+
+
+@admin.register(IndicateursMatchEquipe)
+class IndicateursMatchEquipeAdmin(LectureSeule):
+    """Recalculés par `recalculer_indicateurs` : consultation seule. Le JSON
+    (`valeurs`) est différé : chargé seulement par la page de détail qui l'affiche."""
+    list_display = ("match", "equipe", "version_calcul", "avec_360", "calcule_le")
+    list_filter = ("version_calcul", "avec_360")
+    list_select_related = ("match__domicile", "match__exterieur", "equipe")
+    fields = ("match", "equipe", "version_calcul", "version_source", "avec_360",
+              "calcule_le", "valeurs")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).defer("valeurs")
 
 
 @admin.register(DonneesMatch)

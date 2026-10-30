@@ -12,7 +12,8 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from adversaire.models import AdversaireSuivi, Competition, DonneesMatch, Equipe, Match
+from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe,
+                               IndicateursMatchEquipe, Match)
 
 from . import donnees_inventees as inv
 
@@ -161,6 +162,46 @@ class PageAdversaireTest(TestCase):
                                  flags=re.IGNORECASE)
         self.assertNotIn("frames_360_z", sans_annotation)
         self.assertNotIn("NULLS LAST", sql.upper())
+
+    def indicateurs(self, match, equipe, xg_pour, xg_contre):
+        IndicateursMatchEquipe.objects.create(
+            match=match, equipe=self.equipes[equipe], version_calcul=1, version_source="v1|-",
+            valeurs={"resultat": {"xg_pour": xg_pour, "xg_contre": xg_contre},
+                     "joueurs": {"liste": [{"nom": inv.JOUEUR_INVENTE}]}})
+
+    def test_colonne_xg_ou_tiret(self):
+        """Étape 3b : xG lu dans la table calculée à l'import, vu par l'adversaire."""
+        self.suivre(inv.ADVERSAIRE)
+        calcule = self.match(date(2026, 10, 2), 103, inv.ADVERSAIRE)
+        self.match(date(2026, 10, 1), inv.ADVERSAIRE, 102)  # rien de calculé
+        self.indicateurs(calcule, inv.ADVERSAIRE, 1.25, 0.5)
+        self.indicateurs(calcule, 103, 0.5, 1.25)  # la ligne de l'autre équipe n'est pas lue
+        reponse = self.client.get(URL)
+        lignes = self.lignes(reponse)
+        self.assertEqual((lignes[0]["xg_pour"], lignes[0]["xg_contre"]), (1.25, 0.5))
+        self.assertEqual((lignes[1]["xg_pour"], lignes[1]["xg_contre"]), (None, None))
+        self.assertContains(reponse, "xG pour – contre")
+        self.assertNotContains(reponse, inv.JOUEUR_INVENTE)
+
+    def test_xg_requetes_fixes_et_brut_jamais_lu(self):
+        self.suivre(inv.ADVERSAIRE)
+        m = self.match(date(2026, 9, 1), inv.ADVERSAIRE, 102)
+        self.indicateurs(m, inv.ADVERSAIRE, 0.8, 0.3)
+        with CaptureQueriesContext(connection) as un_match:
+            self.client.get(URL)
+        for k in range(4):
+            m = self.match(date(2026, 9, 10 + k), 104, inv.ADVERSAIRE)
+            self.indicateurs(m, inv.ADVERSAIRE, 0.1 * k, 0.2)
+        with self.assertNumQueries(len(un_match)):
+            self.client.get(URL)
+        sql = " ".join(q["sql"] for q in un_match)
+        self.assertNotIn("evenements_z", sql)
+        self.assertNotIn("compositions_z", sql)
+
+    def test_xg_refuse_sans_role(self):
+        compte = get_user_model().objects.create_user("sans-role-3b", password="x")
+        self.client.force_login(compte)
+        self.assertEqual(self.client.get(URL).status_code, 403)
 
     def test_aucun_nom_de_joueur_sur_la_page(self):
         self.suivre(inv.ADVERSAIRE)

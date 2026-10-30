@@ -8,9 +8,10 @@ from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, TestCase
 
 from adversaire import importation
+from adversaire.analyse import indicateurs
 from adversaire.clients.statsbomb import ErreurStatsBomb
-from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, Match,
-                               compresser, decompresser)
+from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe,
+                               IndicateursMatchEquipe, Match, compresser, decompresser)
 
 from . import donnees_inventees as inv
 
@@ -282,6 +283,118 @@ class ImportTest(TestCase):
         self.assertFalse(Equipe.objects.filter(sb_team_id=999).exists())
 
 
+class IndicateursImportTest(TestCase):
+    """Étape 3b : indicateurs calculés à l'import, dans la transaction du brut."""
+
+    def setUp(self):
+        self.matchs = [
+            inv.match(601, "2026-10-01", statut_360="available", version_360="v360-a"),
+            inv.match(602, "2026-10-08", domicile=103, exterieur=inv.ADVERSAIRE),
+        ]
+
+    def lignes(self, sb_match_id):
+        return {ligne.equipe.sb_team_id: ligne for ligne in
+                IndicateursMatchEquipe.objects.filter(match__sb_match_id=sb_match_id)
+                .select_related("equipe")}
+
+    def test_deux_lignes_par_match_telecharge(self):
+        bilan = importer(FauxClient(self.matchs))
+        self.assertEqual(bilan.indicateurs, 4)
+        self.assertEqual(bilan.erreurs_calcul, [])
+        lignes = self.lignes(601)
+        self.assertEqual(sorted(lignes), [inv.ADVERSAIRE, 102])
+        ligne = lignes[inv.ADVERSAIRE]
+        self.assertEqual(ligne.version_calcul, indicateurs.VERSION_CALCUL)
+        self.assertEqual(ligne.version_source, "2026-10-01T10:00:00.000|v360-a")
+        self.assertTrue(ligne.avec_360)
+        self.assertEqual(ligne.valeurs["systeme"]["formation_depart"], "442")
+        self.assertIsNotNone(ligne.valeurs["trois_cent_soixante"])
+        sans_360 = self.lignes(602)[inv.ADVERSAIRE]
+        self.assertFalse(sans_360.avec_360)
+        self.assertTrue(sans_360.version_source.endswith("|-"))
+        self.assertIsNone(sans_360.valeurs["trois_cent_soixante"])
+
+    def test_relance_a_jour_ne_recalcule_ni_ne_decompresse(self):
+        importer(FauxClient(self.matchs))
+        with mock.patch("adversaire.analyse.indicateurs.calculer") as calcul, \
+                mock.patch("adversaire.models.decompresser") as decompression:
+            bilan = importer(FauxClient(self.matchs))
+        calcul.assert_not_called()
+        decompression.assert_not_called()
+        self.assertEqual((bilan.a_jour, bilan.indicateurs), (2, 0))
+
+    def test_last_updated_modifie_recalcule(self):
+        importer(FauxClient(self.matchs))
+        self.matchs[0]["last_updated"] = "2026-10-15T09:00:00.000"
+        bilan = importer(FauxClient(self.matchs))
+        self.assertEqual(bilan.indicateurs, 2)
+        ligne = self.lignes(601)[inv.ADVERSAIRE]
+        # 360 conservé en base et toujours utilisé par le calcul.
+        self.assertEqual(ligne.version_source, "2026-10-15T09:00:00.000|v360-a")
+        self.assertTrue(ligne.avec_360)
+
+    def test_seul_le_360_relu_recalcule_avec_les_evenements_stockes(self):
+        importer(FauxClient(self.matchs))
+        self.matchs[1]["match_status_360"] = "available"
+        self.matchs[1]["last_updated_360"] = "v360-z"
+        client = FauxClient(self.matchs)
+        importer(client)
+        self.assertEqual(client.appels, [("360", 602)])
+        ligne = self.lignes(602)[inv.ADVERSAIRE]
+        self.assertTrue(ligne.avec_360)
+        self.assertTrue(ligne.version_source.endswith("|v360-z"))
+        # Événements non retéléchargés : relus en base pour le calcul.
+        self.assertEqual(ligne.valeurs["systeme"]["formation_depart"], "442")
+
+    def test_lignes_perimees_recalculees_sans_reseau(self):
+        importer(FauxClient(self.matchs))
+        client = FauxClient(self.matchs)
+        with mock.patch.object(indicateurs, "VERSION_CALCUL", indicateurs.VERSION_CALCUL + 1):
+            bilan = importer(client)
+        self.assertEqual(client.appels, [])
+        self.assertEqual((bilan.a_jour, bilan.indicateurs), (2, 4))
+        self.assertEqual(set(IndicateursMatchEquipe.objects.values_list("version_calcul", flat=True)),
+                         {indicateurs.VERSION_CALCUL + 1})
+
+    def test_erreur_de_calcul_brut_garde(self):
+        with mock.patch("adversaire.analyse.indicateurs.calculer",
+                        side_effect=ZeroDivisionError("contenu à ne pas afficher")):
+            bilan = importer(FauxClient(self.matchs))
+        self.assertEqual(bilan.telecharges, 2)
+        self.assertEqual(bilan.indicateurs, 0)
+        self.assertEqual(len(bilan.erreurs_calcul), 2)
+        self.assertIn("match 601", " ".join(bilan.erreurs_calcul))
+        self.assertIn("ZeroDivisionError", bilan.erreurs_calcul[0])
+        self.assertNotIn("contenu à ne pas afficher", " ".join(bilan.erreurs_calcul))
+        self.assertEqual(DonneesMatch.objects.count(), 2)
+        self.assertFalse(IndicateursMatchEquipe.objects.exists())
+        # Au passage suivant, le match « déjà à jour » est rattrapé.
+        bilan = importer(FauxClient(self.matchs))
+        self.assertEqual((bilan.a_jour, bilan.indicateurs), (2, 4))
+
+    def test_brut_stocke_illisible_le_360_est_ecrit_quand_meme(self):
+        importer(FauxClient(self.matchs))
+        DonneesMatch.objects.filter(match__sb_match_id=602).update(evenements_z=b"pas du zlib")
+        self.matchs[1]["match_status_360"] = "available"
+        self.matchs[1]["last_updated_360"] = "v360-z"
+        bilan = importer(FauxClient(self.matchs))
+        self.assertEqual(bilan.telecharges, 1)
+        self.assertEqual(len(bilan.erreurs_calcul), 1)
+        self.assertIn("match 602", bilan.erreurs_calcul[0])
+        donnees = DonneesMatch.objects.get(match__sb_match_id=602)
+        self.assertEqual(donnees.version_360, "v360-z")
+        self.assertIsNotNone(donnees.frames_360_z)
+
+    def test_brut_illisible_au_rattrapage_n_arrete_pas_l_import(self):
+        importer(FauxClient(self.matchs))
+        DonneesMatch.objects.filter(match__sb_match_id=601).update(evenements_z=b"pas du zlib")
+        with mock.patch.object(indicateurs, "VERSION_CALCUL", indicateurs.VERSION_CALCUL + 1):
+            bilan = importer(FauxClient(self.matchs))
+        self.assertEqual((bilan.a_jour, bilan.indicateurs), (2, 2))
+        self.assertEqual(len(bilan.erreurs_calcul), 1)
+        self.assertIn("match 601", bilan.erreurs_calcul[0])
+
+
 class CommandeTest(TestCase):
     def lancer(self, client, *args):
         sortie, erreurs = io.StringIO(), io.StringIO()
@@ -310,6 +423,7 @@ class CommandeTest(TestCase):
             "--saison", str(inv.SAISON), "--equipe", str(inv.ADVERSAIRE))
         self.assertIn("1 match(s) retenu(s) : 1 téléchargé(s)", sortie)
         self.assertIn("1 ignoré(s)", sortie)
+        self.assertIn("2 ligne(s) d'indicateurs calculée(s), 0 erreur(s) de calcul", sortie)
         self.assertIn("Ignoré : match 801", erreurs)
         self.assertNotIn(inv.JOUEUR_INVENTE, sortie + erreurs)
 

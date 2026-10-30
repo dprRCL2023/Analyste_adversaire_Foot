@@ -5,11 +5,12 @@ rôle exigé par `roles.role_requis` (refus par défaut).
 calcule à l'import (règle du pôle). Les colonnes `*_z` ne sont jamais lues ici.
 """
 from django.db.models import Exists, OuterRef, Q
+from django.db.models.fields.json import KeyTransform
 from django.http import Http404
 from django.shortcuts import render
 
 from .importation import NB_DERNIERS
-from .models import AdversaireSuivi, DonneesMatch, Match
+from .models import AdversaireSuivi, DonneesMatch, IndicateursMatchEquipe, Match
 from .roles import peut_consulter, role_requis
 
 POINTS = {"V": 3, "N": 1, "D": 0}
@@ -43,15 +44,40 @@ def derniers_matchs(suivi):
                 .order_by("-date", "-coup_envoi", "-sb_match_id")[:NB_DERNIERS])
 
 
-def ligne_match(match, equipe_id):
-    """Un match vu par l'adversaire : lieu, équipe rencontrée, buts, V/N/D."""
+def _nombre(valeur):
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    return float(valeur)
+
+
+def xg_des_matchs(matchs, equipe_id):
+    """{pk du match: (xG pour, xG contre)} de l'équipe, lus dans
+    `IndicateursMatchEquipe` (déjà calculés à l'import). Une seule requête, et
+    seules les deux clés utiles sont extraites en SQL : ni le brut ni le JSON
+    complet ne sont chargés."""
+    if not matchs:
+        return {}
+    resultat = KeyTransform("resultat", "valeurs")
+    lignes = (IndicateursMatchEquipe.objects
+              .filter(match_id__in=[m.pk for m in matchs], equipe_id=equipe_id)
+              .values("match_id", xg_pour=KeyTransform("xg_pour", resultat),
+                      xg_contre=KeyTransform("xg_contre", resultat)))
+    return {ligne["match_id"]: (_nombre(ligne["xg_pour"]), _nombre(ligne["xg_contre"]))
+            for ligne in lignes}
+
+
+def ligne_match(match, equipe_id, xg=None):
+    """Un match vu par l'adversaire : lieu, équipe rencontrée, buts, V/N/D, xG."""
     a_domicile = match.domicile_id == equipe_id
     pour, contre = ((match.score_domicile, match.score_exterieur) if a_domicile
                     else (match.score_exterieur, match.score_domicile))
     resultat = None
     if pour is not None and contre is not None:
         resultat = "V" if pour > contre else "D" if pour < contre else "N"
+    xg_pour, xg_contre = xg or (None, None)
     return {
+        "xg_pour": xg_pour,
+        "xg_contre": xg_contre,
         "match": match,
         "a_domicile": a_domicile,
         "rencontre": match.exterieur if a_domicile else match.domicile,
@@ -80,7 +106,9 @@ def accueil(request):
     suivi = _suivi_choisi(request, suivis)
     lignes = []
     if suivi is not None:
-        lignes = [ligne_match(m, suivi.equipe_id) for m in derniers_matchs(suivi)]
+        matchs = derniers_matchs(suivi)
+        xg = xg_des_matchs(matchs, suivi.equipe_id)
+        lignes = [ligne_match(m, suivi.equipe_id, xg.get(m.pk)) for m in matchs]
     return render(request, "adversaire/accueil.html", {
         "suivis": suivis,
         "suivi": suivi,

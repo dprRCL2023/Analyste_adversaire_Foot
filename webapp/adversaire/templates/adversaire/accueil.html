@@ -38,7 +38,7 @@ python manage.py importer_adversaire --competition C --saison S --equipe E</pre>
           <thead>
             <tr>
               <th>Date</th><th>J.</th><th>Lieu</th><th>Adversaire rencontré</th>
-              <th>Score</th><th>Rés.</th><th>360</th><th>Importé le</th>
+              <th>Score</th><th>Rés.</th><th>xG pour – contre</th><th>360</th><th>Importé le</th>
             </tr>
           </thead>
           <tbody>
@@ -50,6 +50,7 @@ python manage.py importer_adversaire --competition C --saison S --equipe E</pre>
                 <td>{{ l.rencontre.nom }}</td>
                 <td>{% if l.resultat %}{{ l.pour }} – {{ l.contre }}{% else %}—{% endif %}</td>
                 <td>{% if l.resultat %}<span class="res res-{{ l.resultat }}">{{ l.resultat }}</span>{% else %}—{% endif %}</td>
+                <td>{% if l.xg_pour is not None and l.xg_contre is not None %}{{ l.xg_pour|floatformat:2 }} – {{ l.xg_contre|floatformat:2 }}{% else %}—{% endif %}</td>
                 <td>{% if l.match.a_360 %}<span class="badge-360">360</span>{% endif %}</td>
                 <td>{{ l.match.importe_le|date:"d/m/Y" }}</td>
               </tr>

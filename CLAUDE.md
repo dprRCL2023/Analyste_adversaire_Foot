@@ -44,8 +44,9 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
    - **3a — fait** : rôles (`roles.py`, refus par défaut), `AdversaireSuivi`
      (équipe CIBLÉE par l'import), page « Adversaire du week-end » (`/`) avec
      les 5 derniers matchs importés, forme et bilan ;
-   - 3b : table d'indicateurs calculés À L'IMPORT (un enregistrement par match
-     et par équipe), partagée avec l'Après-match ;
+   - **3b — fait** (plan détaillé validé le 29/10/2026) : table
+     `IndicateursMatchEquipe` calculée À L'IMPORT (une ligne par match et par
+     équipe), partagée avec l'Après-match ; colonne « xG pour – contre » sur `/` ;
    - 3c : fiche complète (forme, système et XI probable, attaque, défense, CPA).
    - Ensuite : **Après-match** (rapport d'après-match, sur la table de 3b).
 4. Second Spectrum (physique, rapprochement SS ↔ SB par date + équipes).
@@ -135,6 +136,46 @@ python manage.py importer_adversaire --competition C --saison S --equipe E \
 - Requêtes : nombre fixe (pas de N+1, test), badge 360 par annotation
   `Exists(… frames_360_z IS NOT NULL)` : aucune colonne `*_z` lue (test sur
   le SQL capturé), pas de `nulls_last`.
+
+## Indicateurs calculés à l'import (étape 3b)
+
+- **`IndicateursMatchEquipe`** (migration 0003) : (match, équipe) unique, DEUX
+  lignes par match (l'adversaire ET l'équipe rencontrée : « contre » se lit
+  chez l'autre). Rattachée à `Match`, PAS à `DonneesMatch` (le mode « ligue »
+  de l'Après-match gardera les indicateurs et jettera le brut). `valeurs` en
+  JSON (la liste bouge encore : une colonne par indicateur = une migration à
+  chaque ajout) ; un indicateur filtré ou trié en SQL sortira en vraie colonne.
+- **`analyse/indicateurs.py`** : `calculer(evenements, compositions,
+  frames_360, equipe_sb_id)`, Python PUR, déterministe, sans erreur sur un
+  champ absent (None = « non disponible »). Blocs : `resultat` (buts dont csc,
+  xG/npxG, tirs), `deroule` (xG cumulés minute par minute, buts, menace par
+  tranche de 5 min en **OBV**, repli sur l'**xG** si le match n'a pas d'OBV —
+  `menace_source`), `systeme` (formation, `Tactical Shift`, XI), `attaque`,
+  `defense`, `cpa`, `gardien` (PSxG = `shot_execution_xg` si fourni), `joueurs`
+  (minutes, OBV créée/concédée, xG), `trois_cent_soixante` (None sans 360 ;
+  image sans acteur ou vide = « inexploitable », jamais une erreur). Période 5
+  (tirs au but) exclue de tout. Définitions recopiées de Recrutement
+  (`analyse_evenements.progressive`), jamais importées. Pas d'xT maison.
+- **PPDA** : passes adverses dans LEURS 60 % (x ≤ 72 dans leur repère, hors
+  phases arrêtées) ÷ nos tacles, duels gagnés, interceptions et fautes à
+  x ≥ 48 dans le NÔTRE. ⚠️ Chaque équipe attaque vers x = 120 dans ses propres
+  événements : ne jamais comparer des x de deux équipes sans retourner.
+- **Périmé** = `version_calcul` ≠ `indicateurs.VERSION_CALCUL` OU
+  `version_source` ≠ `importation.version_source(last_updated,
+  last_updated_360, a_360)`. ⚠️ Changer une formule = augmenter
+  `VERSION_CALCUL`, puis `recalculer_indicateurs`.
+- **Quand** : à l'import, calcul AVANT la transaction (listes en mémoire,
+  complétées en base par une seule ligne si seul le 360 ou seuls les
+  événements sont relus), écriture DANS la transaction du brut. Match « déjà à
+  jour » à lignes périmées → brut de CE match relu et recalculé. **Une erreur
+  de calcul ne fait jamais perdre le brut** (brut stocké illisible compris : il
+  ne bloque ni l'import ni le recalcul) : match écrit, erreur notée (type
+  et `match_id` seulement), ligne absente ou périmée jusqu'au recalcul.
+  `recalculer_indicateurs [--tous | --match M]` : sans réseau, identifiants
+  d'abord puis un brut à la fois.
+- **Page `/`** : xG lu par `xg_des_matchs` — une requête, deux clés extraites
+  en SQL (`KeyTransform`), ni brut ni JSON complet chargés ; nombre de
+  requêtes fixe (test). Le JSON n'est jamais injecté tel quel dans une page.
 
 ## Commandes
 

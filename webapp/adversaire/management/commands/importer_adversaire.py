@@ -89,10 +89,15 @@ class Command(BaseCommand):
             journal=self.stdout.write)
         for erreur in bilan.erreurs:
             self.stderr.write(f"Ignoré : {erreur}")
+        for erreur in bilan.erreurs_calcul:
+            # Brut écrit quand même : `recalculer_indicateurs` reprendra ce match.
+            self.stderr.write(f"Indicateurs : {erreur}")
         self.stdout.write(self.style.SUCCESS(
             f"{bilan.retenus} match(s) retenu(s) : {bilan.telecharges} téléchargé(s), "
             f"{bilan.a_jour} déjà à jour ; {bilan.avec_360} avec 360, "
-            f"{bilan.sans_360} sans 360 ; {len(bilan.erreurs)} ignoré(s)."))
+            f"{bilan.sans_360} sans 360 ; {len(bilan.erreurs)} ignoré(s) ; "
+            f"{bilan.indicateurs} ligne(s) d'indicateurs calculée(s), "
+            f"{len(bilan.erreurs_calcul)} erreur(s) de calcul."))
         if not bilan.suivi:
             self.stderr.write("Équipe absente des matchs de cette saison : "
                               "elle n'apparaîtra pas sur la page « Adversaire du week-end ».")

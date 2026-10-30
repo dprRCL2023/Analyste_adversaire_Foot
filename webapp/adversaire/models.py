@@ -155,3 +155,41 @@ class AdversaireSuivi(models.Model):
 
     def __str__(self):
         return f"{self.equipe} ({self.competition})"
+
+
+class IndicateursMatchEquipe(models.Model):
+    """Indicateurs d'UN match vus par UNE équipe (étape 3b), calculés À
+    L'IMPORT par `analyse/indicateurs.py` : deux lignes par match (l'adversaire
+    ET l'équipe rencontrée, car « contre » se lit chez l'autre).
+
+    Rattachée à `Match`, pas à `DonneesMatch` : le futur mode « ligue » de
+    l'Après-match gardera les indicateurs et jettera le brut. Recalculable
+    (`recalculer_indicateurs`), rien ne s'y saisit. Une vue la LIT, ne la
+    calcule jamais."""
+    match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="indicateurs")
+    equipe = models.ForeignKey(Equipe, on_delete=models.PROTECT, related_name="indicateurs")
+    # `indicateurs.VERSION_CALCUL` au moment du calcul : une formule changée
+    # rend la ligne périmée.
+    version_calcul = models.PositiveIntegerField()
+    # `last_updated` + `last_updated_360` du brut utilisé
+    # (`importation.version_source`) : une révision StatsBomb la rend périmée.
+    version_source = models.CharField(max_length=90, blank=True)
+    avec_360 = models.BooleanField(default=False)
+    # JSON plutôt qu'une colonne par indicateur : la liste bouge encore (3c,
+    # Après-match). Un indicateur filtré ou trié en SQL sortira en colonne.
+    valeurs = models.JSONField(default=dict)
+    calcule_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["match", "equipe"],
+                                    name="indicateurs_match_equipe_unique"),
+        ]
+        indexes = [
+            models.Index(fields=["equipe", "match"], name="indicateurs_equipe_match"),
+        ]
+        verbose_name = "indicateurs d'un match"
+        verbose_name_plural = "indicateurs des matchs"
+
+    def __str__(self):
+        return f"{self.match} — {self.equipe}"

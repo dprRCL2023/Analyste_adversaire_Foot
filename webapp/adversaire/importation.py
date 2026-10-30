@@ -11,8 +11,14 @@
   match à moitié écrit.
 - L'équipe ciblée est notée dans `AdversaireSuivi` (étape 3a) : c'est elle
   qu'affiche la page « Adversaire du week-end ».
+- Indicateurs (étape 3b) : deux lignes `IndicateursMatchEquipe` par match,
+  calculées AVANT la transaction (listes déjà en mémoire) et écrites DANS la
+  même transaction que le brut. Match « déjà à jour » mais lignes absentes ou
+  périmées : le brut de CE match est relu et recalculé. Une erreur de calcul
+  ne fait jamais perdre le brut (le match est écrit, l'erreur notée).
 """
 import http.client
+import zlib
 from dataclasses import dataclass, field
 from datetime import date, time
 
@@ -20,8 +26,10 @@ from django.db import transaction
 from django.db.models import BooleanField, ExpressionWrapper, Q
 from django.utils import timezone
 
+from .analyse import indicateurs
 from .clients.statsbomb import ErreurStatsBomb
-from .models import AdversaireSuivi, Competition, DonneesMatch, Equipe, Match
+from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, IndicateursMatchEquipe,
+                     Match)
 
 DISPONIBLE = "available"
 NB_DERNIERS = 5
@@ -148,6 +156,92 @@ def a_telecharger(etat, m, forcer=False, sans_360=False):
     return principal, relire_360
 
 
+# ── Indicateurs (étape 3b) ───────────────────────────────────────────────────
+class ErreurCalcul(Exception):
+    """Le calcul des indicateurs a échoué. Le message ne porte que le TYPE de
+    l'erreur (jamais de contenu du brut) ; le brut reste écrit."""
+
+
+class BrutAbsent(Exception):
+    """Aucun brut stocké pour ce match : rien à recalculer."""
+
+
+def version_source(version, version_360, a_360):
+    """Version du brut qui a servi au calcul (`last_updated` | `last_updated_360`,
+    « - » sans 360) : une révision StatsBomb, ou un 360 arrivé, la change."""
+    return f"{version or ''}|{(version_360 or '') if a_360 else '-'}"
+
+
+def calculer_valeurs(domicile_sb, exterieur_sb, evenements, compositions, frames):
+    """{id SB de l'équipe: valeurs} pour les deux équipes du match ; lève
+    ErreurCalcul si le module de calcul échoue."""
+    try:
+        return {ident: indicateurs.calculer(evenements, compositions, frames, ident)
+                for ident in (domicile_sb, exterieur_sb)}
+    except Exception as e:  # une formule fautive ne doit jamais faire perdre le brut
+        raise ErreurCalcul(type(e).__name__) from None
+
+
+def ecrire_indicateurs(match, equipes, valeurs, source, avec_360):
+    """Écrit (ou remplace) les lignes du match. À appeler dans une transaction."""
+    for equipe in equipes:
+        IndicateursMatchEquipe.objects.update_or_create(match=match, equipe=equipe, defaults={
+            "version_calcul": indicateurs.VERSION_CALCUL,
+            "version_source": source,
+            "avec_360": avec_360,
+            "valeurs": valeurs[equipe.sb_team_id],
+        })
+
+
+def lignes_a_jour(match_pk, equipe_ids, source):
+    """Vrai si chaque équipe a sa ligne, à la version de calcul et de source attendues."""
+    a_jour = IndicateursMatchEquipe.objects.filter(
+        match_id=match_pk, equipe_id__in=equipe_ids,
+        version_calcul=indicateurs.VERSION_CALCUL, version_source=source).count()
+    return a_jour == len(set(equipe_ids))
+
+
+def recalculer_match(match):
+    """Relit le brut d'UN match (une seule ligne `DonneesMatch`) et réécrit ses
+    deux lignes, sans réseau. `match` doit porter `domicile` et `exterieur`.
+    Lève BrutAbsent ou ErreurCalcul ; rend le nombre de lignes écrites."""
+    donnees = DonneesMatch.objects.filter(match_id=match.pk).first()
+    if donnees is None:
+        raise BrutAbsent(f"match {match.sb_match_id} sans brut")
+    try:
+        frames = donnees.frames_360
+        evenements, compositions = donnees.evenements, donnees.compositions
+    except (zlib.error, ValueError) as e:  # brut illisible (zlib, UTF-8, JSON) : noté, jamais bloquant
+        raise ErreurCalcul(type(e).__name__) from None
+    valeurs = calculer_valeurs(match.domicile.sb_team_id, match.exterieur.sb_team_id,
+                               evenements, compositions, frames)
+    with transaction.atomic():
+        ecrire_indicateurs(match, [match.domicile, match.exterieur], valeurs,
+                           version_source(donnees.version, donnees.version_360, frames is not None),
+                           frames is not None)
+    return 2
+
+
+def matchs_a_recalculer():
+    """pk des matchs dont le brut existe mais dont une ligne manque ou est
+    périmée — sans charger aucune colonne `*_z`."""
+    attendues = {}
+    for mid, eid, calcul, source in IndicateursMatchEquipe.objects.values_list(
+            "match_id", "equipe_id", "version_calcul", "version_source"):
+        attendues[(mid, eid)] = (calcul, source)
+    etats = (DonneesMatch.objects
+             .annotate(a_360=ExpressionWrapper(Q(frames_360_z__isnull=False),
+                                               output_field=BooleanField()))
+             .values_list("match_id", "version", "version_360", "a_360",
+                          "match__domicile_id", "match__exterieur_id"))
+    perimes = []
+    for mid, version, version_360, a_360, domicile, exterieur in etats:
+        attendu = (indicateurs.VERSION_CALCUL, version_source(version, version_360, a_360))
+        if attendues.get((mid, domicile)) != attendu or attendues.get((mid, exterieur)) != attendu:
+            perimes.append(mid)
+    return sorted(perimes)
+
+
 # ── Écriture ─────────────────────────────────────────────────────────────────
 TELECHARGE, A_JOUR = "telecharge", "a_jour"
 
@@ -161,6 +255,15 @@ class Bilan:
     sans_360: int = 0
     erreurs: list = field(default_factory=list)
     suivi: bool = False  # adversaire enregistré pour la page « Adversaire du week-end »
+    indicateurs: int = 0  # lignes d'indicateurs calculées pendant ce passage
+    erreurs_calcul: list = field(default_factory=list)
+
+
+@dataclass
+class ResultatMatch:
+    etat: str  # TELECHARGE ou A_JOUR
+    lignes: int = 0  # lignes d'indicateurs écrites
+    erreur_calcul: str = ""  # type de l'erreur de calcul, sinon vide
 
 
 def _liste(valeur, quoi, ident):
@@ -169,11 +272,40 @@ def _liste(valeur, quoi, ident):
     return valeur
 
 
+def _completer_brut(etat, m, evenements, compositions, frames, principal, relire_360):
+    """Complète, depuis la base, ce qui n'a pas été retéléchargé (une seule
+    ligne, seulement les colonnes utiles) pour calculer sur le brut entier."""
+    colonnes = []
+    if not principal:
+        colonnes += ["evenements_z", "compositions_z"]
+    if not relire_360 and etat is not None and etat["a_360"]:
+        colonnes.append("frames_360_z")
+    if colonnes:
+        stocke = DonneesMatch.objects.only(*colonnes).get(match__sb_match_id=m["id"])
+        if not principal:
+            evenements, compositions = stocke.evenements, stocke.compositions
+        if "frames_360_z" in colonnes:
+            frames = stocke.frames_360
+    return evenements, compositions, frames
+
+
+def _rattraper(match, equipes, etat):
+    """Match « déjà à jour » : recalcule ses lignes si elles manquent ou sont périmées."""
+    source = version_source(etat["version"], etat["version_360"], etat["a_360"])
+    if lignes_a_jour(match.pk, [e.pk for e in equipes], source):
+        return ResultatMatch(A_JOUR)
+    try:
+        return ResultatMatch(A_JOUR, recalculer_match(match))
+    except (ErreurCalcul, BrutAbsent) as e:
+        return ResultatMatch(A_JOUR, 0, str(e))
+
+
 def importer_match(client, competition, m, forcer=False, sans_360=False):
-    """Importe un match normalisé. Rend TELECHARGE ou A_JOUR.
+    """Importe un match normalisé. Rend un ResultatMatch (TELECHARGE ou A_JOUR).
 
     Les appels réseau ont lieu AVANT la transaction (pas de transaction
-    ouverte pendant un téléchargement) ; l'écriture se fait d'un bloc."""
+    ouverte pendant un téléchargement) ; l'écriture se fait d'un bloc, brut
+    et indicateurs ensemble."""
     etat = etat_en_base(m["id"])
     principal, relire_360 = a_telecharger(etat, m, forcer, sans_360)
     evenements = compositions = frames = None
@@ -182,6 +314,23 @@ def importer_match(client, competition, m, forcer=False, sans_360=False):
         compositions = _liste(client.compositions(m["id"]), "compositions", m["id"])
     if relire_360:
         frames = _liste(client.frames_360(m["id"]), "images 360", m["id"])
+
+    valeurs, erreur, source, avec_360 = None, "", "", False
+    if principal or relire_360:
+        try:
+            tout = _completer_brut(etat, m, evenements, compositions, frames, principal, relire_360)
+        except (zlib.error, ValueError) as e:  # brut stocké illisible : le brut téléchargé est écrit quand même
+            erreur = type(e).__name__
+        else:
+            avec_360 = tout[2] is not None
+            source = version_source(
+                m["version"] if principal else etat["version"],
+                m["version_360"] if relire_360 else (etat or {}).get("version_360", ""),
+                avec_360)
+            try:
+                valeurs = calculer_valeurs(m["domicile"]["id"], m["exterieur"]["id"], *tout)
+            except ErreurCalcul as e:
+                erreur = str(e)
 
     with transaction.atomic():
         equipes = {}
@@ -200,23 +349,27 @@ def importer_match(client, competition, m, forcer=False, sans_360=False):
             "statut": m["statut"],
             "statut_360": m["statut_360"],
         })
-        if not principal and not relire_360:
-            return A_JOUR
-        # Colonnes lourdes non chargées : save() n'écrit que celles qu'on pose.
-        donnees = (DonneesMatch.objects
-                   .defer("evenements_z", "compositions_z", "frames_360_z")
-                   .filter(match=match).first())
-        if donnees is None:
-            donnees = DonneesMatch(match=match)
-        if principal:
-            donnees.evenements = evenements
-            donnees.compositions = compositions
-            donnees.version = m["version"]
-        if relire_360:
-            donnees.frames_360 = frames
-            donnees.version_360 = m["version_360"]
-        donnees.save()
-    return TELECHARGE
+        if principal or relire_360:
+            # Colonnes lourdes non chargées : save() n'écrit que celles qu'on pose.
+            donnees = (DonneesMatch.objects
+                       .defer("evenements_z", "compositions_z", "frames_360_z")
+                       .filter(match=match).first())
+            if donnees is None:
+                donnees = DonneesMatch(match=match)
+            if principal:
+                donnees.evenements = evenements
+                donnees.compositions = compositions
+                donnees.version = m["version"]
+            if relire_360:
+                donnees.frames_360 = frames
+                donnees.version_360 = m["version_360"]
+            donnees.save()
+            if valeurs is not None:
+                ecrire_indicateurs(match, [equipes["domicile"], equipes["exterieur"]],
+                                   valeurs, source, avec_360)
+    if not principal and not relire_360:
+        return _rattraper(match, [equipes["domicile"], equipes["exterieur"]], etat)
+    return ResultatMatch(TELECHARGE, 2 if valeurs is not None else 0, erreur)
 
 
 def importer_adversaire(client, competition_id, season_id, equipe_id,
@@ -245,7 +398,7 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
     bilan = Bilan(retenus=len(retenus), erreurs=list(erreurs))
     for m in retenus:
         try:
-            etat = importer_match(client, competition, m, forcer, sans_360)
+            resultat = importer_match(client, competition, m, forcer, sans_360)
         except (MatchInvalide, ErreurStatsBomb) as e:
             # Reprise au match suivant ; le match fautif reste dans son état précédent.
             bilan.erreurs.append(f"match {m['id']} : {e}")
@@ -255,6 +408,11 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
             # reprise. Seul le type est noté, le message pourrait porter le corps.
             bilan.erreurs.append(f"match {m['id']} : réponse interrompue ({type(e).__name__})")
             continue
+        etat = resultat.etat
+        bilan.indicateurs += resultat.lignes
+        if resultat.erreur_calcul:
+            bilan.erreurs_calcul.append(
+                f"match {m['id']} : calcul des indicateurs en échec ({resultat.erreur_calcul})")
         if etat == TELECHARGE:
             bilan.telecharges += 1
         else:
@@ -267,7 +425,8 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
             bilan.sans_360 += 1
         journal(f"{m['date']} match {m['id']} : "
                 f"{'téléchargé' if etat == TELECHARGE else 'déjà à jour'}"
-                f"{', avec 360' if a_360 else ', sans 360'}")
+                f"{', avec 360' if a_360 else ', sans 360'}"
+                f"{', indicateurs calculés' if resultat.lignes else ''}")
     bilan.suivi = suivre(competition, equipe_id, equipes_de(matchs_bruts).get(equipe_id))
     return bilan
 
