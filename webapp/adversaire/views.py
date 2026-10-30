@@ -9,6 +9,7 @@ from django.db.models.fields.json import KeyTransform
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 
+from .blocs import blocs_affiches
 from .importation import NB_DERNIERS, fiche_perimee, matchs_du_suivi
 from .models import AdversaireSuivi, DonneesMatch, FicheAdversaire, IndicateursMatchEquipe
 from .roles import peut_consulter, role_requis
@@ -130,6 +131,7 @@ def fiche(request, suivi_id):
         "bilan": bilan(lignes),
         "fiche": fiche_stockee,
         "valeurs": fiche_stockee.valeurs if fiche_stockee else None,
+        "blocs": blocs_affiches(fiche_stockee.valeurs) if fiche_stockee else [],
         "perimee": fiche_stockee is not None and fiche_perimee(fiche_stockee, [m.pk for m in matchs]),
         "nb_derniers": NB_DERNIERS,
     })

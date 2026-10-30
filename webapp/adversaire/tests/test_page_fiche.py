@@ -13,6 +13,9 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
+from unittest import mock
+
+from adversaire import blocs
 from adversaire.analyse import fiche, indicateurs
 from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe,
                                FicheAdversaire, Match)
@@ -410,6 +413,59 @@ class PageFicheBlocs3c2Test(TestCase):
 
     def test_fiche_a_jour_sans_bandeau(self):
         self.assertNotContains(self.page(valeurs_3c2(), version=2), "Fiche à recalculer")
+
+    def test_sommaire_dans_l_ordre_de_la_liste(self):
+        contenu = self.page(valeurs_3c2()).content.decode()
+        liens = re.findall(r'<a href="#([a-z-]+)">', contenu)
+        self.assertEqual(liens, [b.ancre for b in blocs.BLOCS_FICHE])
+        for bloc in blocs.BLOCS_FICHE:
+            self.assertIn(f'id="{bloc.ancre}"', contenu)
+
+    def test_sommaire_et_blocs_exacts_dans_l_ordre(self):
+        contenu = self.page(valeurs_3c2()).content.decode()
+        attendu = [
+            ("resultats", "Résultats et forme"),
+            ("systeme", "Système et XI probable"),
+            ("joueurs", "Joueurs clés"),
+            ("attaque", "Attaque"),
+            ("defense", "Défense"),
+            ("cpa", "Coups de pied arrêtés"),
+            ("trois-cent-soixante", "360"),
+        ]
+        liens = re.findall(r'<a href="#([a-z-]+)">([^<]*)</a>', contenu)
+        self.assertEqual(liens, attendu)
+        positions = []
+        for ancre, _titre in attendu:
+            self.assertEqual(contenu.count(f'id="{ancre}"'), 1, ancre)
+            positions.append(contenu.index(f'id="{ancre}"'))
+        self.assertEqual(positions, sorted(positions))
+
+    def test_retirer_une_entree_retire_le_bloc_et_son_lien(self):
+        restantes = [b for b in blocs.BLOCS_FICHE if b.cle != "cpa"]
+        with mock.patch.object(blocs, "BLOCS_FICHE", restantes):
+            reponse = self.page(valeurs_3c2())
+        self.assertEqual(reponse.status_code, 200)
+        self.assertNotContains(reponse, 'id="cpa"')
+        self.assertNotContains(reponse, 'href="#cpa"')
+        self.assertContains(reponse, 'id="attaque"')
+        self.assertContains(reponse, 'href="#trois-cent-soixante"')
+
+    def test_liste_vide_aucun_bloc_sans_erreur(self):
+        with mock.patch.object(blocs, "BLOCS_FICHE", []):
+            reponse = self.page(valeurs_3c2())
+        self.assertEqual(reponse.status_code, 200)
+        self.assertNotContains(reponse, 'id="resultats"')
+        self.assertNotContains(reponse, 'href="#resultats"')
+
+    def test_nombre_de_requetes_independant_des_blocs(self):
+        self.page(valeurs_3c2())
+        url = reverse("fiche", args=[self.suivi.id])
+        with CaptureQueriesContext(connection) as toutes:
+            self.client.get(url)
+        with mock.patch.object(blocs, "BLOCS_FICHE", blocs.BLOCS_FICHE[:2]):
+            with CaptureQueriesContext(connection) as moins:
+                self.client.get(url)
+        self.assertEqual(len(toutes), len(moins))
 
 
 class FichePeriodeTest(TestCase):

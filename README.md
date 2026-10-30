@@ -71,6 +71,11 @@ Après la mise à jour des blocs Attaque, Défense, CPA et 360 (étape 3c-2), le
 fiches existantes affichent le bandeau : `python manage.py recalculer_indicateurs`
 suffit (ni réseau, ni relecture du brut).
 
+Les blocs de la fiche sont listés dans `webapp/adversaire/blocs.py`
+(`BLOCS_FICHE`, une ligne par bloc : clé, titre du sommaire, ancre, gabarit,
+clé de `valeurs` exigée). Pour retirer un bloc de la fiche (et son lien du
+sommaire), supprimer sa ligne ; l'ordre de la liste est celui de la page.
+
 Sur les terrains, l'adversaire attaque toujours vers la droite ; les tirs et
 corners concédés sont donc dessinés vers SON but, à gauche.
 
