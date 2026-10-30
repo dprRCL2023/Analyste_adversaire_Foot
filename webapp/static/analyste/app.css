@@ -142,6 +142,11 @@ button {
 .chiffres div { padding: 8px 10px; background: var(--fond); border-radius: 6px; }
 .chiffres dt { color: var(--gris); font-size: 13px; }
 .chiffres dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; }
+/* Glossaire « Comment lire la fiche » : texte normal, pas les gros chiffres */
+.glossaire { margin: 0; }
+.glossaire div { margin: 0 0 8px; }
+.glossaire dt { font-weight: 600; }
+.glossaire dd { margin: 0; }
 .grilles { display: flex; flex-wrap: wrap; gap: 16px; }
 .grille { flex: 1 1 280px; max-width: 460px; margin: 0; }
 .grille figcaption { font-weight: 600; margin-bottom: 4px; }

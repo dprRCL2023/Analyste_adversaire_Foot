@@ -459,6 +459,7 @@ class PageFicheBlocs3c2Test(TestCase):
             ("defense", "Défense"),
             ("cpa", "Coups de pied arrêtés"),
             ("trois-cent-soixante", "360"),
+            ("glossaire", "Comment lire la fiche"),
         ]
         liens = re.findall(r'<a href="#([a-z-]+)">([^<]*)</a>', contenu)
         self.assertEqual(liens, attendu)
@@ -477,6 +478,37 @@ class PageFicheBlocs3c2Test(TestCase):
         self.assertNotContains(reponse, 'href="#cpa"')
         self.assertContains(reponse, 'id="attaque"')
         self.assertContains(reponse, 'href="#trois-cent-soixante"')
+
+    def test_glossaire_en_dernier_et_retirable(self):
+        self.assertEqual(blocs.BLOCS_FICHE[-1].cle, "glossaire")
+        contenu = self.page(valeurs_3c2()).content.decode()
+        self.assertIn("Définitions des indicateurs", contenu)
+        bloc = contenu[contenu.index('id="glossaire"'):]
+        termes = [
+            "xG (buts attendus)", "npxG", "xG par tir", "OBV / 90", "PPDA",
+            "PSxG", "Actions progressives", "360", "« Peu joué »",
+        ]
+        self.assertEqual(re.findall(r"<dt>([^<]*)</dt>", bloc), termes)
+        self.assertIn('class="glossaire"', bloc)
+        self.assertNotIn('class="chiffres"', bloc)
+
+        def definition(terme):
+            trouve = re.search(rf"<dt>{re.escape(terme)}</dt><dd>([^<]*)</dd>", bloc)
+            self.assertIsNotNone(trouve, terme)
+            return trouve.group(1)
+
+        self.assertIn(f"Moins de {fiche.SEUIL_PEU_JOUE} minutes", definition("« Peu joué »"))
+        self.assertIn("tirs cadrés subis", definition("PSxG"))
+        self.assertIn("PSxG − buts &gt; 0 : le gardien a encaissé moins que prévu.", definition("PSxG"))
+        self.assertIn("au moins 5 yards", definition("Actions progressives"))
+        self.assertIn("au moins 25 %", definition("Actions progressives"))
+        self.assertIn("corners, coups francs, touches, six mètres, engagements", definition("Actions progressives"))
+        restantes = [b for b in blocs.BLOCS_FICHE if b.cle != "glossaire"]
+        with mock.patch.object(blocs, "BLOCS_FICHE", restantes):
+            reponse = self.page(valeurs_3c2())
+        self.assertNotContains(reponse, 'id="glossaire"')
+        self.assertNotContains(reponse, 'href="#glossaire"')
+        self.assertContains(reponse, 'id="trois-cent-soixante"')
 
     def test_liste_vide_aucun_bloc_sans_erreur(self):
         with mock.patch.object(blocs, "BLOCS_FICHE", []):

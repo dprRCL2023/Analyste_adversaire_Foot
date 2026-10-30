@@ -23,6 +23,7 @@ BLOCS_FICHE = [
     Bloc("cpa", "Coups de pied arrêtés", "cpa", "adversaire/fiche/_cpa.html"),
     Bloc("trois_cent_soixante", "360", "trois-cent-soixante", "adversaire/fiche/_360.html",
          cle_valeurs="trois_cent_soixante"),
+    Bloc("glossaire", "Comment lire la fiche", "glossaire", "adversaire/fiche/_glossaire.html"),
 ]
 
 
