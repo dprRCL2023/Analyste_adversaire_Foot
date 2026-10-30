@@ -1,0 +1,11 @@
+<tr>
+  <th scope="row">{{ titre }}</th>
+  <td>{{ b.matchs }}</td>
+  <td>{{ b.buts_pour }} – {{ b.buts_contre }}</td>
+  <td>{{ b.xg_pour|floatformat:2|default:"—" }} – {{ b.xg_contre|floatformat:2|default:"—" }}</td>
+  <td>{{ b.xg_pour_par_match|floatformat:2|default:"—" }} – {{ b.xg_contre_par_match|floatformat:2|default:"—" }}</td>
+  <td>{{ b.tirs_pour }} – {{ b.tirs_contre }}</td>
+  <td>{{ b.xg_par_tir_pour|floatformat:2|default:"—" }} – {{ b.xg_par_tir_contre|floatformat:2|default:"—" }}</td>
+  <td>{{ b.ppda|floatformat:1|default:"—" }}</td>
+  <td>{% if b.possession_pct is not None %}{{ b.possession_pct|floatformat:0 }} %{% else %}—{% endif %}</td>
+</tr>

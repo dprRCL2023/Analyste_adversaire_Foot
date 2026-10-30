@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titre %}Fiche — {{ suivi.equipe.nom }}{% endblock %}
+{% block contenu %}
+<section class="carte">
+  <p class="aide"><a href="{% url 'accueil' %}?suivi={{ suivi.id }}">← Adversaire du week-end</a></p>
+  <h1>{{ suivi.equipe.nom }}</h1>
+  <p class="aide">{{ suivi.competition }} · importé le {{ suivi.importe_le|date:"d/m/Y à H:i" }}</p>
+  {% if not fiche %}
+    <p class="vide">La fiche n'est pas encore calculée.</p>
+    <p class="aide">Elle se calcule en ligne de commande (jamais depuis cette page) :</p>
+    <pre class="commande">python manage.py recalculer_indicateurs</pre>
+  {% else %}
+    {% if perimee %}
+      <p class="bandeau">Fiche à recalculer (nouveaux matchs ou nouvelles règles) :
+        <code>python manage.py recalculer_indicateurs</code></p>
+    {% endif %}
+    <p class="aide">
+      Calculée le {{ fiche.calcule_le|date:"d/m/Y à H:i" }}
+      sur {{ valeurs.nb_matchs_calcules }} match{{ valeurs.nb_matchs_calcules|pluralize }} sur {{ valeurs.nb_matchs }}
+      · {{ valeurs.matchs_avec_360 }} match{{ valeurs.matchs_avec_360|pluralize }} sur {{ valeurs.nb_matchs }} avec 360.
+    </p>
+    <nav class="sommaire" aria-label="Sommaire de la fiche">
+      <a href="#resultats">Résultats et forme</a>
+      <a href="#systeme">Système et XI probable</a>
+      <a href="#joueurs">Joueurs clés</a>
+    </nav>
+  {% endif %}
+</section>
+{% if fiche %}
+  {% include "adversaire/fiche/_resultats.html" %}
+  {% include "adversaire/fiche/_systeme.html" %}
+  {% include "adversaire/fiche/_joueurs.html" %}
+{% endif %}
+{% endblock %}

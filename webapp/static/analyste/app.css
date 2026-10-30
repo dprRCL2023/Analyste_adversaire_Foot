@@ -62,6 +62,7 @@ button {
 
 .erreur { color: #A12A2A; }
 .vide, .aide { color: var(--gris); }
+.aide a { color: var(--night); }
 
 .navigation { flex: 1; margin-left: 24px; }
 .navigation a { color: #fff; text-decoration: none; }
@@ -102,3 +103,31 @@ button {
   font-size: 12px;
   font-weight: 700;
 }
+
+/* Fiche adversaire (étape 3c) */
+.lien-fiche { font-weight: 600; color: var(--night); }
+.bloc { margin-top: 16px; }
+.bandeau {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #FFF4D6;
+  border: 1px solid var(--sand);
+}
+.sommaire { display: flex; flex-wrap: wrap; gap: 12px; }
+.sommaire a { color: var(--night); }
+.peu-joue {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #FFF4D6;
+  color: #7A5B00;
+  font-size: 12px;
+}
+.xi { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.xi-terrain { flex: 1 1 360px; max-width: 560px; }
+.xi-liste { flex: 1 1 220px; margin: 0; }
+/* Terrain SVG : couleurs ici, jamais en attribut style (CSP). */
+.terrain { width: 100%; height: auto; display: block; }
+.terrain .pelouse { fill: #2F6B3F; stroke: #fff; stroke-width: .5; }
+.terrain .trait { fill: none; stroke: #fff; stroke-width: .5; }
+.terrain .joueur circle { fill: var(--sand); stroke: var(--night); stroke-width: .5; }
+.terrain .joueur text { fill: var(--night); font-size: 3.4px; font-weight: 700; }

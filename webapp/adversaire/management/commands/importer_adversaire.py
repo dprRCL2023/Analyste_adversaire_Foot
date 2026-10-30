@@ -101,3 +101,8 @@ class Command(BaseCommand):
         if not bilan.suivi:
             self.stderr.write("Équipe absente des matchs de cette saison : "
                               "elle n'apparaîtra pas sur la page « Adversaire du week-end ».")
+        elif bilan.erreur_fiche:
+            self.stderr.write(f"Fiche adversaire : calcul en échec ({bilan.erreur_fiche}), "
+                              "ancienne fiche gardée.")
+        else:
+            self.stdout.write(f"Fiche adversaire calculée sur {bilan.fiche} match(s).")

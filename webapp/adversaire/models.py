@@ -193,3 +193,27 @@ class IndicateursMatchEquipe(models.Model):
 
     def __str__(self):
         return f"{self.match} — {self.equipe}"
+
+
+class FicheAdversaire(models.Model):
+    """Synthèse des derniers matchs d'un adversaire suivi (étape 3c-1),
+    calculée À L'IMPORT par `analyse/fiche.py` à partir des lignes
+    d'`IndicateursMatchEquipe` : la page fiche la LIT, ne calcule rien.
+
+    Recalculable (`importer_adversaire`, `recalculer_indicateurs`), rien ne
+    s'y saisit. Périmée si `version_fiche` ≠ `fiche.VERSION_FICHE` ou si
+    `matchs` ne sont plus les derniers matchs du suivi."""
+    suivi = models.OneToOneField(AdversaireSuivi, on_delete=models.CASCADE, related_name="fiche")
+    version_fiche = models.PositiveIntegerField()
+    # pk des matchs utilisés, du plus récent au plus ancien.
+    matchs = models.JSONField(default=list)
+    nb_matchs_calcules = models.PositiveSmallIntegerField(default=0)
+    valeurs = models.JSONField(default=dict)
+    calcule_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "fiche adversaire"
+        verbose_name_plural = "fiches adversaires"
+
+    def __str__(self):
+        return f"Fiche {self.suivi}"

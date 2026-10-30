@@ -47,7 +47,13 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
    - **3b — fait** (plan détaillé validé le 29/10/2026) : table
      `IndicateursMatchEquipe` calculée À L'IMPORT (une ligne par match et par
      équipe), partagée avec l'Après-match ; colonne « xG pour – contre » sur `/` ;
-   - 3c : fiche complète (forme, système et XI probable, attaque, défense, CPA).
+   - 3c (plan détaillé validé le 30/10/2026, deux PR) :
+     - **3c-1 — fait** : indicateurs v2 (+ ajouts du propriétaire), table
+       `FicheAdversaire` calculée à l'import, page `/adversaire/<id du suivi>/`
+       avec Résultats et forme, Système et XI probable, Joueurs clés ;
+     - 3c-2 : affichage d'Attaque, Défense, Danger, Transitions, CPA et 360
+       (terrains SVG en grilles), SANS modèle ni migration : tout est déjà
+       dans `FicheAdversaire.valeurs`.
    - Ensuite : **Après-match** (rapport d'après-match, sur la table de 3b).
 4. Second Spectrum (physique, rapprochement SS ↔ SB par date + équipes).
 5. Séquences horodatées, playlists, notes (sans vidéo).
@@ -176,6 +182,65 @@ python manage.py importer_adversaire --competition C --saison S --equipe E \
 - **Page `/`** : xG lu par `xg_des_matchs` — une requête, deux clés extraites
   en SQL (`KeyTransform`), ni brut ni JSON complet chargés ; nombre de
   requêtes fixe (test). Le JSON n'est jamais injecté tel quel dans une page.
+
+## Fiche adversaire (étape 3c-1)
+
+- **Indicateurs v2** (`VERSION_CALCUL = 2`) : `resultat.par_motif` (buts, tirs,
+  xG pour et contre par `play_pattern`, penalty et csc à part),
+  `attaque.grille_tirs_xg`, `cpa.chutes_corners`, `systeme.xi[].position_id`,
+  `danger` (xG et buts par tranche de 15 min — temps additionnel dans la
+  dernière tranche de sa mi-temps, prolongations à part — et hauteur des
+  actions défensives selon le score, mène / égalité / mené), `transitions`
+  (tirs et xG dans les 15 s qui suivent une récupération, pour et contre ;
+  grille des pertes suivies d'un tir adverse dans les 15 s ; fenêtre de temps
+  seule, même période, en secondes entières). **Avec le 360 seulement**
+  (`trois_cent_soixante`, None sans 360) : `relance` (passes en jeu courant
+  depuis son tiers selon 0, 1, 2+ adversaires à moins de 5 m, réussite, vers
+  l'avant), `gardien_sous_pression` (≥ 3 adversaires de champ dans son tiers ;
+  longues = 32 m et plus), `ligne_defensive_par_score` (moyenne des 4 joueurs
+  de champ les plus reculés, image ignorée s'il en voit moins de 4),
+  `corners_pour` / `corners_contre` (attaquants et défenseurs de champ dans
+  les 6 m et la surface), et par joueur `passes_5_elimines` (passe réussie,
+  ≥ 5 adversaires de champ entre départ et arrivée) et
+  `receptions_entre_lignes` (hors de son tiers, ≥ 3 adversaires devant et ≥ 2
+  derrière). ⚠️ Le 360 ne voit que les joueurs à l'image : ces comptes sont
+  des MINIMUMS. 5 m = 5 / 0,9144 yard (terrain StatsBomb en yards).
+- **`FicheAdversaire`** (migration 0004, OneToOne avec le suivi) : synthèse
+  des 5 derniers matchs par `analyse/fiche.py` (PUR, sans Django). Un match ne
+  compte que si ses DEUX lignes sont à la version de calcul courante
+  (« n matchs sur 5 », « n matchs sur 5 avec 360 »). **Sommes avant ratios**
+  (PPDA, possession, xG par tir, réussites, hauteurs). XI probable :
+  titularisations, puis titulaire au dernier match, puis minutes, puis id ;
+  poste le plus fréquent (égalité → le plus récent) placé d'après
+  `position_id` (`fiche.POSITIONS`). Formation la plus fréquente, égalité → la
+  plus récente. Absent = titulaire ≥ 3 fois sur les 4 précédents et 0 minute
+  au dernier (cause inconnue, libellé neutre). ⚠️ Si le match le plus récent
+  n'est PAS calculé (`systeme.dernier_match_calcule` faux), ni absents ni
+  départage « titulaire au dernier match » : la page affiche « Dernier match
+  non calculé » (le 1er match calculé n'est pas le dernier joué). Joueurs clés : OBV / 90 (sur
+  les seules minutes des matchs qui ont l'OBV), repli xG puis actions
+  progressives sans OBV, « peu joué » < 90 min cumulées. Domicile / extérieur
+  séparés pour le bloc Résultats. Grilles : niveaux 0 à 5 par RANG (quantiles)
+  calculés à l'import (`fiche.niveaux`). Pas de moyenne de ligue en 3c.
+- **Quand** : en fin d'`importer_adversaire` (le suivi importé) et dans
+  `recalculer_indicateurs` (TOUS les suivis, après les matchs), depuis les
+  lignes d'indicateurs, jamais le brut. Erreur de calcul → ancienne fiche
+  gardée, type d'erreur seul dans la sortie.
+- **Périmée** (`importation.fiche_perimee`) = `version_fiche` ≠
+  `fiche.VERSION_FICHE` OU `matchs` ≠ les derniers matchs du suivi
+  (`importation.matchs_du_suivi`, même requête que les pages) : bandeau sur la
+  page, qui ne recalcule rien. ⚠️ Changer une règle de la fiche = augmenter
+  `VERSION_FICHE`, puis `recalculer_indicateurs`.
+- **Page** `/adversaire/<int:suivi_id>/` sous `@role_requis(peut_consulter)`
+  (inconnu → 404) : 3 requêtes métier (suivi, matchs, fiche), ni `*_z` ni
+  `IndicateursMatchEquipe` lus (test sur le SQL). Premiers NOMS de joueurs
+  affichés (pros adverses, base locale) : échappement automatique, jamais
+  `|safe` ni JSON injecté (test avec un nom hostile). Terrain SVG par
+  attributs (`templatetags/terrain.py`, `{% localize off %}` : en fr, un
+  nombre décimal s'écrirait avec une virgule) ; un gabarit partiel par bloc
+  (`templates/adversaire/fiche/`), réutilisable par l'Après-match.
+- **Base d'avant 3c-1** : `python manage.py migrate && python manage.py
+  recalculer_indicateurs` (indicateurs v1 → v2 puis fiches), sans réseau.
 
 ## Commandes
 

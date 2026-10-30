@@ -1,0 +1,21 @@
+{% load l10n %}{% localize off %}
+<svg class="terrain" viewBox="-2 -2 124 84" role="img" aria-label="XI probable sur le terrain, attaque vers la droite">
+  <rect class="pelouse" x="0" y="0" width="120" height="80"/>
+  <line class="trait" x1="60" y1="0" x2="60" y2="80"/>
+  <circle class="trait" cx="60" cy="40" r="10"/>
+  <rect class="trait" x="0" y="18" width="18" height="44"/>
+  <rect class="trait" x="102" y="18" width="18" height="44"/>
+  <rect class="trait" x="0" y="30" width="6" height="20"/>
+  <rect class="trait" x="114" y="30" width="6" height="20"/>
+  {% for j in sur_terrain %}
+    <g class="joueur">
+      <title>{{ j.nom|default:"Joueur sans nom" }}{% if j.poste %} — {{ j.poste }}{% endif %}</title>
+      <circle cx="{{ j.x }}" cy="{{ j.y }}" r="3.6"/>
+      <text x="{{ j.x }}" y="{{ j.y }}" dy="1.2" text-anchor="middle">{{ j.numero|default_if_none:"" }}</text>
+    </g>
+  {% endfor %}
+</svg>
+{% endlocalize %}
+{% if sans_poste %}
+  <p class="aide">Poste inconnu : {% for j in sans_poste %}{{ j.nom|default:"Joueur sans nom" }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}

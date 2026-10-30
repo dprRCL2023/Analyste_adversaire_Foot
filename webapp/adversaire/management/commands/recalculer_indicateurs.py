@@ -4,15 +4,17 @@
     python manage.py recalculer_indicateurs --tous     # tous les matchs
     python manage.py recalculer_indicateurs --match M  # un match (id StatsBomb)
 
-À lancer après une évolution des formules (`VERSION_CALCUL`). Match par
-match : les identifiants d'abord, puis un seul brut en mémoire à la fois.
+À lancer après une évolution des formules (`VERSION_CALCUL`, `VERSION_FICHE`).
+Match par match : les identifiants d'abord, puis un seul brut en mémoire à la
+fois. Puis les fiches de TOUS les adversaires suivis sont reconstruites
+(étape 3c-1), depuis les lignes d'indicateurs seulement, un suivi à la fois.
 Aucune table saisie par le staff n'est touchée. Les sorties ne portent que
-des identifiants de match et des types d'erreur.
+des identifiants de match ou de suivi et des types d'erreur.
 """
 from django.core.management.base import BaseCommand, CommandError
 
 from adversaire import importation
-from adversaire.models import Match
+from adversaire.models import AdversaireSuivi, Match
 
 
 def _positif(texte):
@@ -57,3 +59,15 @@ class Command(BaseCommand):
                 recalcules += 1
         self.stdout.write(self.style.SUCCESS(
             f"{recalcules} match(s) recalculé(s), {echecs} en échec, {sans_brut} sans brut."))
+
+        fiches = fiches_en_echec = 0
+        for suivi in AdversaireSuivi.objects.order_by("pk"):
+            try:
+                importation.construire_fiche(suivi)
+            except importation.ErreurCalcul as e:
+                fiches_en_echec += 1
+                self.stderr.write(f"Échec de la fiche : suivi {suivi.pk} ({e})")
+            else:
+                fiches += 1
+        self.stdout.write(self.style.SUCCESS(
+            f"{fiches} fiche(s) reconstruite(s), {fiches_en_echec} en échec."))

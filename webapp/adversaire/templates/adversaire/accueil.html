@@ -24,6 +24,7 @@ python manage.py importer_adversaire --competition C --saison S --equipe E</pre>
 
     <h2>{{ suivi.equipe.nom }}</h2>
     <p class="aide">{{ suivi.competition }} · importé le {{ suivi.importe_le|date:"d/m/Y à H:i" }}</p>
+    <p><a class="lien-fiche" href="{% url 'fiche' suivi.id %}">Voir la fiche</a></p>
 
     {% if lignes %}
       <p class="bilan">

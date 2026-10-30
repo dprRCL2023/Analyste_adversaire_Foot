@@ -4,13 +4,13 @@ rôle exigé par `roles.role_requis` (refus par défaut).
 ⚠️ Aucune vue n'appelle un fournisseur ni ne calcule sur le brut : tout se
 calcule à l'import (règle du pôle). Les colonnes `*_z` ne sont jamais lues ici.
 """
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef
 from django.db.models.fields.json import KeyTransform
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 
-from .importation import NB_DERNIERS
-from .models import AdversaireSuivi, DonneesMatch, IndicateursMatchEquipe, Match
+from .importation import NB_DERNIERS, fiche_perimee, matchs_du_suivi
+from .models import AdversaireSuivi, DonneesMatch, FicheAdversaire, IndicateursMatchEquipe
 from .roles import peut_consulter, role_requis
 
 POINTS = {"V": 3, "N": 1, "D": 0}
@@ -34,14 +34,10 @@ def _suivi_choisi(request, suivis):
 def derniers_matchs(suivi):
     """Les NB_DERNIERS matchs importés de l'adversaire suivi, du plus récent au
     plus ancien, avec `a_360` (annotation : le brut n'est pas chargé)."""
-    equipe = suivi.equipe_id
     avec_360 = DonneesMatch.objects.filter(match=OuterRef("pk"), frames_360_z__isnull=False)
-    return list(Match.objects
-                .filter(Q(domicile_id=equipe) | Q(exterieur_id=equipe),
-                        competition_id=suivi.competition_id)
+    return list(matchs_du_suivi(suivi)
                 .select_related("competition", "domicile", "exterieur")
-                .annotate(a_360=Exists(avec_360))
-                .order_by("-date", "-coup_envoi", "-sb_match_id")[:NB_DERNIERS])
+                .annotate(a_360=Exists(avec_360))[:NB_DERNIERS])
 
 
 def _nombre(valeur):
@@ -114,5 +110,26 @@ def accueil(request):
         "suivi": suivi,
         "lignes": lignes,
         "bilan": bilan(lignes),
+        "nb_derniers": NB_DERNIERS,
+    })
+
+
+@role_requis(peut_consulter)
+def fiche(request, suivi_id):
+    """Fiche de l'adversaire : LIT la synthèse calculée à l'import
+    (`FicheAdversaire`), ne calcule rien. Trois requêtes métier : suivi,
+    matchs, fiche ; ni brut ni indicateurs par match chargés."""
+    suivi = get_object_or_404(AdversaireSuivi.objects.select_related("equipe", "competition"),
+                              pk=suivi_id)
+    matchs = derniers_matchs(suivi)
+    lignes = [ligne_match(m, suivi.equipe_id) for m in matchs]
+    fiche_stockee = FicheAdversaire.objects.filter(suivi=suivi).first()
+    return render(request, "adversaire/fiche.html", {
+        "suivi": suivi,
+        "lignes": lignes,
+        "bilan": bilan(lignes),
+        "fiche": fiche_stockee,
+        "valeurs": fiche_stockee.valeurs if fiche_stockee else None,
+        "perimee": fiche_stockee is not None and fiche_perimee(fiche_stockee, [m.pk for m in matchs]),
         "nb_derniers": NB_DERNIERS,
     })

@@ -4,8 +4,8 @@ rien ne se saisit ni ne se supprime ici. Le brut compressé n'est jamais affich�
 from django.contrib import admin
 from django.db.models import BooleanField, ExpressionWrapper, Q
 
-from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, IndicateursMatchEquipe,
-                     Match)
+from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, FicheAdversaire,
+                     IndicateursMatchEquipe, Match)
 
 
 class LectureSeule(admin.ModelAdmin):
@@ -54,6 +54,18 @@ class IndicateursMatchEquipeAdmin(LectureSeule):
     list_select_related = ("match__domicile", "match__exterieur", "equipe")
     fields = ("match", "equipe", "version_calcul", "version_source", "avec_360",
               "calcule_le", "valeurs")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).defer("valeurs")
+
+
+@admin.register(FicheAdversaire)
+class FicheAdversaireAdmin(LectureSeule):
+    """Reconstruite par l'import et `recalculer_indicateurs` : consultation
+    seule ; `valeurs` différé dans la liste."""
+    list_display = ("suivi", "version_fiche", "nb_matchs_calcules", "calcule_le")
+    list_select_related = ("suivi__equipe", "suivi__competition")
+    fields = ("suivi", "version_fiche", "matchs", "nb_matchs_calcules", "calcule_le", "valeurs")
 
     def get_queryset(self, request):
         return super().get_queryset(request).defer("valeurs")

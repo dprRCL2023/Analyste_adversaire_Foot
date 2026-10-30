@@ -8,10 +8,11 @@ from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, TestCase
 
 from adversaire import importation
-from adversaire.analyse import indicateurs
+from adversaire.analyse import fiche, indicateurs
 from adversaire.clients.statsbomb import ErreurStatsBomb
 from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe,
-                               IndicateursMatchEquipe, Match, compresser, decompresser)
+                               FicheAdversaire, IndicateursMatchEquipe, Match, compresser,
+                               decompresser)
 
 from . import donnees_inventees as inv
 
@@ -395,6 +396,85 @@ class IndicateursImportTest(TestCase):
         self.assertIn("match 601", bilan.erreurs_calcul[0])
 
 
+class FicheImportTest(TestCase):
+    """Étape 3c-1 : fiche de l'adversaire reconstruite en fin d'import."""
+
+    def setUp(self):
+        self.matchs = [
+            inv.match(601, "2026-10-01", statut_360="available", version_360="v360-a"),
+            inv.match(602, "2026-10-08", domicile=103, exterieur=inv.ADVERSAIRE),
+        ]
+
+    def test_fiche_creee_en_fin_d_import(self):
+        bilan = importer(FauxClient(self.matchs))
+        self.assertEqual((bilan.fiche, bilan.erreur_fiche), (2, ""))
+        f = FicheAdversaire.objects.select_related("suivi__equipe").get()
+        self.assertEqual(f.suivi.equipe.sb_team_id, inv.ADVERSAIRE)
+        self.assertEqual(f.version_fiche, fiche.VERSION_FICHE)
+        # Du plus récent au plus ancien, comme la page.
+        self.assertEqual(f.matchs, [Match.objects.get(sb_match_id=602).pk,
+                                    Match.objects.get(sb_match_id=601).pk])
+        self.assertEqual((f.nb_matchs_calcules, f.valeurs["matchs_avec_360"]), (2, 1))
+        self.assertFalse(importation.fiche_perimee(f, f.matchs))
+
+    def test_fiche_mise_a_jour_a_l_import_suivant(self):
+        importer(FauxClient(self.matchs))
+        FicheAdversaire.objects.update(valeurs={}, nb_matchs_calcules=0)
+        bilan = importer(FauxClient(self.matchs))  # rien à retélécharger
+        self.assertEqual(bilan.telecharges, 0)
+        f = FicheAdversaire.objects.get()
+        self.assertEqual(f.nb_matchs_calcules, 2)
+        self.assertEqual(f.valeurs["nb_matchs_calcules"], 2)
+        self.assertEqual(FicheAdversaire.objects.count(), 1)
+
+    def test_bilan_domicile_exterieur_et_possession_dans_la_fiche(self):
+        """601 : l'adversaire reçoit 102 ; 602 : il va chez 103. « Contre » se lit
+        sur la ligne de l'équipe rencontrée de CHAQUE match."""
+        importer(FauxClient(self.matchs))
+
+        def modifier(sb_match_id, sb_team_id, buts=None, passes=None):
+            ligne = IndicateursMatchEquipe.objects.get(match__sb_match_id=sb_match_id,
+                                                       equipe__sb_team_id=sb_team_id)
+            if buts is not None:
+                ligne.valeurs["resultat"]["buts_pour"] = buts
+            if passes is not None:
+                ligne.valeurs["attaque"]["passes"] = passes
+            ligne.save()
+
+        modifier(601, inv.ADVERSAIRE, buts=3, passes=1)
+        modifier(601, 102, passes=0)
+        modifier(602, inv.ADVERSAIRE, buts=1, passes=1)
+        modifier(602, 103, passes=3)
+        importation.construire_fiche(AdversaireSuivi.objects.get())
+        r = FicheAdversaire.objects.get().valeurs["resultats"]
+        self.assertEqual((r["domicile"]["matchs"], r["domicile"]["buts_pour"]), (1, 3))
+        self.assertEqual((r["exterieur"]["matchs"], r["exterieur"]["buts_pour"]), (1, 1))
+        self.assertEqual(r["total"]["buts_pour"], 4)
+        # Sommes avant ratio : 2 passes sur 2 + 3 = 40 %, pas la moyenne de 100 % et 25 %.
+        self.assertEqual(r["domicile"]["possession_pct"], 100.0)
+        self.assertEqual(r["exterieur"]["possession_pct"], 25.0)
+        self.assertEqual(r["total"]["possession_pct"], 40.0)
+
+    def test_lignes_d_une_ancienne_version_ignorees(self):
+        importer(FauxClient(self.matchs))
+        IndicateursMatchEquipe.objects.update(version_calcul=1)
+        suivi = AdversaireSuivi.objects.get()
+        self.assertEqual(importation.construire_fiche(suivi), 0)
+
+    def test_erreur_de_fiche_ancienne_fiche_gardee(self):
+        importer(FauxClient(self.matchs))
+        avant = FicheAdversaire.objects.get().valeurs
+        with mock.patch("adversaire.analyse.fiche.construire",
+                        side_effect=KeyError("contenu à ne pas afficher")):
+            bilan = importer(FauxClient(self.matchs))
+        self.assertEqual(bilan.erreur_fiche, "KeyError")
+        self.assertEqual(FicheAdversaire.objects.get().valeurs, avant)
+
+    def test_pas_de_fiche_sans_suivi(self):
+        importation.importer_adversaire(FauxClient(self.matchs), inv.COMPETITION, inv.SAISON, 999)
+        self.assertFalse(FicheAdversaire.objects.exists())
+
+
 class CommandeTest(TestCase):
     def lancer(self, client, *args):
         sortie, erreurs = io.StringIO(), io.StringIO()
@@ -424,8 +504,18 @@ class CommandeTest(TestCase):
         self.assertIn("1 match(s) retenu(s) : 1 téléchargé(s)", sortie)
         self.assertIn("1 ignoré(s)", sortie)
         self.assertIn("2 ligne(s) d'indicateurs calculée(s), 0 erreur(s) de calcul", sortie)
+        self.assertIn("Fiche adversaire calculée sur 1 match(s).", sortie)
         self.assertIn("Ignoré : match 801", erreurs)
         self.assertNotIn(inv.JOUEUR_INVENTE, sortie + erreurs)
+
+    def test_echec_de_la_fiche_signale_sans_contenu(self):
+        with mock.patch("adversaire.analyse.fiche.construire",
+                        side_effect=KeyError("contenu à ne pas afficher")):
+            _, erreurs = self.lancer(
+                FauxClient([inv.match(803, "2026-10-01")]), "--competition", str(inv.COMPETITION),
+                "--saison", str(inv.SAISON), "--equipe", str(inv.ADVERSAIRE))
+        self.assertIn("Fiche adversaire : calcul en échec (KeyError)", erreurs)
+        self.assertNotIn("contenu à ne pas afficher", erreurs)
 
     def test_equipe_absente_signalee(self):
         sortie, erreurs = self.lancer(

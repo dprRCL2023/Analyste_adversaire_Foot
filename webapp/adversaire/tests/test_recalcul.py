@@ -10,8 +10,9 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 from adversaire import importation
-from adversaire.analyse import indicateurs
-from adversaire.models import Competition, DonneesMatch, Equipe, IndicateursMatchEquipe, Match
+from adversaire.analyse import fiche, indicateurs
+from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equipe,
+                               FicheAdversaire, IndicateursMatchEquipe, Match)
 
 from . import donnees_inventees as inv
 from .test_import import FauxClient, importer
@@ -95,3 +96,37 @@ class RecalculTest(TestCase):
     def test_aucune_sortie_ne_porte_un_nom_de_joueur(self):
         sortie, erreurs = self.lancer("--tous")
         self.assertNotIn(inv.JOUEUR_INVENTE, sortie + erreurs)
+
+    # ── Fiches (étape 3c-1) ──────────────────────────────────────────────────
+    def test_indicateurs_v1_vers_v2_puis_fiches_reconstruites(self):
+        """Base d'avant 3c-1 : lignes en version 1, fiche absente."""
+        IndicateursMatchEquipe.objects.update(version_calcul=1)
+        FicheAdversaire.objects.all().delete()
+        self.assertEqual(len(importation.matchs_a_recalculer()), 2)
+        sortie, _ = self.lancer()
+        self.assertIn("2 match(s) recalculé(s)", sortie)
+        self.assertIn("1 fiche(s) reconstruite(s), 0 en échec.", sortie)
+        self.assertEqual(set(IndicateursMatchEquipe.objects.values_list("version_calcul", flat=True)),
+                         {indicateurs.VERSION_CALCUL})
+        f = FicheAdversaire.objects.get()
+        self.assertEqual((f.version_fiche, f.nb_matchs_calcules), (fiche.VERSION_FICHE, 2))
+
+    def test_fiche_d_une_autre_version_reconstruite(self):
+        FicheAdversaire.objects.update(version_fiche=0, valeurs={})
+        sortie, _ = self.lancer()
+        self.assertIn("0 match(s) recalculé(s)", sortie)
+        self.assertIn("1 fiche(s) reconstruite(s)", sortie)
+        f = FicheAdversaire.objects.get()
+        self.assertEqual(f.version_fiche, fiche.VERSION_FICHE)
+        self.assertEqual(f.valeurs["nb_matchs_calcules"], 2)
+
+    def test_echec_de_fiche_signale_sans_contenu_ancienne_gardee(self):
+        avant = FicheAdversaire.objects.get().valeurs
+        with mock.patch("adversaire.analyse.fiche.construire",
+                        side_effect=ValueError("contenu à ne pas afficher")):
+            sortie, erreurs = self.lancer()
+        suivi = AdversaireSuivi.objects.get()
+        self.assertIn("0 fiche(s) reconstruite(s), 1 en échec.", sortie)
+        self.assertIn(f"Échec de la fiche : suivi {suivi.pk} (ValueError)", erreurs)
+        self.assertNotIn("contenu à ne pas afficher", erreurs)
+        self.assertEqual(FicheAdversaire.objects.get().valeurs, avant)

@@ -1,0 +1,65 @@
+{% load terrain %}
+<section class="carte bloc" id="systeme">
+  <h2>Système et XI probable</h2>
+  {% with s=valeurs.systeme %}
+    <p>
+      Formation la plus utilisée : <strong>{{ s.formation_probable|default:"non disponible" }}</strong>
+      {% if s.formations %}({% for f in s.formations %}{{ f.formation }} × {{ f.matchs }}{% if not forloop.last %}, {% endif %}{% endfor %}){% endif %}
+    </p>
+    {% if s.changements %}
+      <p class="aide">Changements en cours de match :
+        {% for c in s.changements %}{{ c.date }}, {{ c.minute|floatformat:0 }}e → {{ c.formation }}{% if not forloop.last %} ; {% endif %}{% endfor %}
+      </p>
+    {% endif %}
+
+    <h3>XI probable</h3>
+    {% if s.xi_probable %}
+      <div class="xi">
+        <div class="xi-terrain">{% terrain_xi s.xi_probable %}</div>
+        <ol class="xi-liste">
+          {% for j in s.xi_probable %}
+            <li>{% if j.numero %}{{ j.numero }} · {% endif %}{{ j.nom|default:"Joueur sans nom" }}
+              <span class="aide">— {{ j.poste|default:"poste inconnu" }}, {{ j.titularisations }} titularisation{{ j.titularisations|pluralize }}</span></li>
+          {% endfor %}
+        </ol>
+      </div>
+      <p class="aide">Titularisations sur les matchs calculés ; à égalité, titulaire au dernier match (s'il est calculé), puis minutes. Poste le plus fréquent.</p>
+    {% else %}
+      <p class="vide">XI non disponible.</p>
+    {% endif %}
+
+    <h3>Absents du dernier match</h3>
+    {% if not s.dernier_match_calcule %}
+      <p class="vide">Dernier match non calculé : absents non disponibles.</p>
+    {% elif s.absents %}
+      <ul>
+        {% for a in s.absents %}
+          <li>{{ a.nom|default:"Joueur sans nom" }} : 0 minute au dernier match,
+            titulaire {{ a.titularisations_precedentes }} fois sur les {{ s.matchs_precedents }} matchs précédents</li>
+        {% endfor %}
+      </ul>
+      <p class="aide">Cause inconnue (blessure, suspension ou choix) : StatsBomb ne la donne pas.</p>
+    {% else %}
+      <p class="vide">Aucun titulaire habituel absent du dernier match.</p>
+    {% endif %}
+
+    <h3>Minutes jouées</h3>
+    {% if s.minutes %}
+      <div class="defile">
+        <table class="matchs">
+          <thead><tr><th>Joueur</th><th>Matchs joués</th><th>Titularisations</th><th>Minutes</th></tr></thead>
+          <tbody>
+            {% for j in s.minutes %}
+              <tr>
+                <td>{% if j.numero %}{{ j.numero }} · {% endif %}{{ j.nom|default:"Joueur sans nom" }}</td>
+                <td>{{ j.matchs }}</td><td>{{ j.titularisations }}</td><td>{{ j.minutes }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="vide">Minutes non disponibles.</p>
+    {% endif %}
+  {% endwith %}
+</section>

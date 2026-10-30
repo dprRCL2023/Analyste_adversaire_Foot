@@ -1,0 +1,35 @@
+<section class="carte bloc" id="joueurs">
+  <h2>Joueurs clés</h2>
+  {% with jc=valeurs.joueurs %}
+    {% if jc.cles %}
+      {% if not jc.obv_disponible %}
+        <p class="aide">OBV non fourni sur ces matchs : classement par xG, puis actions progressives.</p>
+      {% endif %}
+      <div class="defile">
+        <table class="matchs">
+          <thead>
+            <tr>
+              <th>Joueur</th><th>Minutes</th><th>OBV créée / 90</th><th>OBV concédée / 90</th>
+              <th>xG</th><th>Actions progressives</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in jc.cles %}
+              <tr>
+                <td>{{ j.nom|default:"Joueur sans nom" }}</td>
+                <td>{{ j.minutes }}{% if j.peu_joue %} <span class="peu-joue">peu joué</span>{% endif %}</td>
+                <td>{{ j.obv_cree_90|floatformat:2|default:"—" }}</td>
+                <td>{{ j.obv_concede_90|floatformat:2|default:"—" }}</td>
+                <td>{{ j.xg|floatformat:2 }}</td>
+                <td>{{ j.actions_progressives }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="aide">« Peu joué » : moins de {{ jc.seuil_peu_joue }} minutes cumulées, valeurs par 90 minutes à prendre avec prudence.</p>
+    {% else %}
+      <p class="vide">Aucun joueur disponible.</p>
+    {% endif %}
+  {% endwith %}
+</section>

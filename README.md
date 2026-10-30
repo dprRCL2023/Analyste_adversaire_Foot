@@ -3,11 +3,12 @@
 Appli interne de l'USL Dunkerque pour préparer l'adversaire du week-end à
 partir des données StatsBomb et Second Spectrum. Connexion obligatoire.
 
-État : **étape 3b** : squelette (connexion, sécurité, Docker), import
+État : **étape 3c-1** : squelette (connexion, sécurité, Docker), import
 StatsBomb des derniers matchs d'un adversaire (ligne de commande), rôles,
 page « Adversaire du week-end » (5 derniers matchs importés, forme, bilan,
-xG pour et contre) et indicateurs de chaque match calculés à l'import.
-Le détail et la suite sont dans `CLAUDE.md`.
+xG pour et contre), indicateurs de chaque match calculés à l'import, et
+fiche de l'adversaire (résultats et forme, système et XI probable, joueurs
+clés). Le détail et la suite sont dans `CLAUDE.md`.
 
 ## Comptes et rôles
 
@@ -50,7 +51,19 @@ python manage.py recalculer_indicateurs --tous     # tout
 python manage.py recalculer_indicateurs --match M  # un match (id StatsBomb)
 ```
 
-Sans réseau : la commande relit le brut déjà stocké en base.
+Sans réseau : la commande relit le brut déjà stocké en base, puis reconstruit
+la fiche de chaque adversaire suivi.
+
+## Fiche de l'adversaire
+
+Depuis la page « Adversaire du week-end », lien « Voir la fiche »
+(`/adversaire/<n°>/`). La fiche est calculée à l'import ; si un bandeau
+« Fiche à recalculer » apparaît, lancer `python manage.py recalculer_indicateurs`.
+Après la mise à jour qui l'a introduite (base existante) :
+
+```bash
+python manage.py migrate && python manage.py recalculer_indicateurs
+```
 
 ## Démarrer en local
 

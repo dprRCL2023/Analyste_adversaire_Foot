@@ -16,6 +16,9 @@
   même transaction que le brut. Match « déjà à jour » mais lignes absentes ou
   périmées : le brut de CE match est relu et recalculé. Une erreur de calcul
   ne fait jamais perdre le brut (le match est écrit, l'erreur notée).
+- Fiche (étape 3c-1) : en fin d'import, la synthèse des derniers matchs du
+  suivi (`FicheAdversaire`) est recalculée depuis les lignes d'indicateurs,
+  sans brut. Une erreur de calcul garde l'ancienne fiche.
 """
 import http.client
 import zlib
@@ -26,10 +29,10 @@ from django.db import transaction
 from django.db.models import BooleanField, ExpressionWrapper, Q
 from django.utils import timezone
 
-from .analyse import indicateurs
+from .analyse import fiche, indicateurs
 from .clients.statsbomb import ErreurStatsBomb
-from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, IndicateursMatchEquipe,
-                     Match)
+from .models import (AdversaireSuivi, Competition, DonneesMatch, Equipe, FicheAdversaire,
+                     IndicateursMatchEquipe, Match)
 
 DISPONIBLE = "available"
 NB_DERNIERS = 5
@@ -257,6 +260,8 @@ class Bilan:
     suivi: bool = False  # adversaire enregistré pour la page « Adversaire du week-end »
     indicateurs: int = 0  # lignes d'indicateurs calculées pendant ce passage
     erreurs_calcul: list = field(default_factory=list)
+    fiche: int = -1  # matchs calculés dans la fiche reconstruite ; -1 si aucune
+    erreur_fiche: str = ""  # type de l'erreur de calcul de la fiche, sinon vide
 
 
 @dataclass
@@ -427,21 +432,81 @@ def importer_adversaire(client, competition_id, season_id, equipe_id,
                 f"{'téléchargé' if etat == TELECHARGE else 'déjà à jour'}"
                 f"{', avec 360' if a_360 else ', sans 360'}"
                 f"{', indicateurs calculés' if resultat.lignes else ''}")
-    bilan.suivi = suivre(competition, equipe_id, equipes_de(matchs_bruts).get(equipe_id))
+    suivi = suivre(competition, equipe_id, equipes_de(matchs_bruts).get(equipe_id))
+    bilan.suivi = suivi is not None
+    if suivi is not None:
+        try:
+            bilan.fiche = construire_fiche(suivi)
+        except ErreurCalcul as e:
+            bilan.erreur_fiche = str(e)
     return bilan
 
 
 def suivre(competition, equipe_id, nom):
     """Enregistre (ou date à nouveau) l'équipe CIBLÉE par l'import : c'est
     elle que montre la page « Adversaire du week-end ». Rien si l'équipe
-    n'apparaît dans aucun match de la saison (identifiant erroné). Rend vrai
-    si le suivi est posé."""
+    n'apparaît dans aucun match de la saison (identifiant erroné). Rend le
+    suivi, ou None."""
     if not nom:
-        return False
+        return None
     with transaction.atomic():
         equipe, _ = Equipe.objects.update_or_create(sb_team_id=equipe_id,
                                                     defaults={"nom": nom})
-        AdversaireSuivi.objects.update_or_create(
+        suivi, _ = AdversaireSuivi.objects.update_or_create(
             equipe=equipe, competition=competition,
             defaults={"importe_le": timezone.now()})
-    return True
+    return suivi
+
+
+# ── Fiche de l'adversaire (étape 3c-1) ───────────────────────────────────────
+def matchs_du_suivi(suivi):
+    """Matchs de l'adversaire suivi DANS sa compétition, du plus récent au
+    plus ancien (requête non tranchée). Même ordre pour la fiche et pour les
+    pages : c'est ce qui permet de repérer une fiche périmée."""
+    equipe = suivi.equipe_id
+    return (Match.objects
+            .filter(Q(domicile_id=equipe) | Q(exterieur_id=equipe),
+                    competition_id=suivi.competition_id)
+            .order_by("-date", "-coup_envoi", "-sb_match_id"))
+
+
+def elements_de_fiche(suivi):
+    """(pk des NB_DERNIERS matchs, éléments pour `fiche.construire`). Lit les
+    lignes d'indicateurs À JOUR de la version de calcul, jamais le brut."""
+    matchs = list(matchs_du_suivi(suivi).only("date", "domicile", "exterieur")[:NB_DERNIERS])
+    lignes = {(ligne["match_id"], ligne["equipe_id"]): ligne["valeurs"]
+              for ligne in IndicateursMatchEquipe.objects
+              .filter(match_id__in=[m.pk for m in matchs],
+                      version_calcul=indicateurs.VERSION_CALCUL)
+              .values("match_id", "equipe_id", "valeurs")}
+    elements = []
+    for m in matchs:
+        a_domicile = m.domicile_id == suivi.equipe_id
+        autre = m.exterieur_id if a_domicile else m.domicile_id
+        elements.append({"match": m.pk, "date": m.date.isoformat(), "a_domicile": a_domicile,
+                         "pour": lignes.get((m.pk, suivi.equipe_id)),
+                         "contre": lignes.get((m.pk, autre))})
+    return [m.pk for m in matchs], elements
+
+
+def construire_fiche(suivi):
+    """(Re)calcule la fiche du suivi. Rend le nombre de matchs calculés ;
+    lève ErreurCalcul (type seulement) en gardant l'ancienne fiche."""
+    pks, elements = elements_de_fiche(suivi)
+    try:
+        valeurs = fiche.construire(elements)
+    except Exception as e:  # une règle fautive ne doit jamais effacer l'ancienne fiche
+        raise ErreurCalcul(type(e).__name__) from None
+    FicheAdversaire.objects.update_or_create(suivi=suivi, defaults={
+        "version_fiche": fiche.VERSION_FICHE,
+        "matchs": pks,
+        "nb_matchs_calcules": valeurs["nb_matchs_calcules"],
+        "valeurs": valeurs,
+    })
+    return valeurs["nb_matchs_calcules"]
+
+
+def fiche_perimee(fiche_stockee, pks_actuels):
+    """Vrai si la fiche date d'une autre règle ou d'autres matchs."""
+    return (fiche_stockee.version_fiche != fiche.VERSION_FICHE
+            or list(fiche_stockee.matchs or []) != list(pks_actuels))
