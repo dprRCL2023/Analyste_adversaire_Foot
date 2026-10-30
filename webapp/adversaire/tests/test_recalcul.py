@@ -130,9 +130,29 @@ class RecalculTest(TestCase):
         self.assertIn("0 match(s) recalculé(s), 0 en échec, 0 sans brut.", sortie)
         self.assertIn("1 fiche(s) reconstruite(s), 0 en échec.", sortie)
         f = FicheAdversaire.objects.get()
-        self.assertEqual((f.version_fiche, f.valeurs["version_fiche"]), (2, 2))
+        self.assertEqual((f.version_fiche, f.valeurs["version_fiche"]),
+                         (fiche.VERSION_FICHE, fiche.VERSION_FICHE))
         self.assertIn("barres_xg", f.valeurs["danger"])
         self.assertIn("min_non_vide", f.valeurs["cpa"]["chutes_corners_contre"])
+
+    def test_fiche_v2_reconstruite_en_v3_avec_tendances(self):
+        """Étape 3c-3 : fiche v2 sans `tendances` → v3, sans relire le brut."""
+        valeurs = FicheAdversaire.objects.get().valeurs
+        del valeurs["tendances"]
+        FicheAdversaire.objects.update(version_fiche=2, valeurs=valeurs)
+        with mock.patch("adversaire.analyse.indicateurs.calculer",
+                        side_effect=AssertionError("brut relu")):
+            sortie, _ = self.lancer()
+        self.assertIn("1 fiche(s) reconstruite(s), 0 en échec.", sortie)
+        f = FicheAdversaire.objects.get()
+        self.assertEqual((f.version_fiche, f.valeurs["version_fiche"]), (3, 3))
+        t = f.valeurs["tendances"]
+        # 602 (le 08/10, chez 103, 1 – 0 pour le club recevant) puis 601 (le 01/10, reçoit 102, 1 – 0).
+        self.assertEqual([(m["date"], m["a_domicile"], m["rencontre"], m["score_pour"], m["score_contre"],
+                           m["resultat"], m["calcule"]) for m in t["matchs"]],
+                         [("08/10/2026", False, "Racing Fictif", 0, 1, "D", True),
+                          ("01/10/2026", True, "Olympique Imaginaire", 1, 0, "V", True)])
+        self.assertEqual(t["nb_calcules"], 2)
 
     def test_echec_de_fiche_signale_sans_contenu_ancienne_gardee(self):
         avant = FicheAdversaire.objects.get().valeurs

@@ -1,0 +1,44 @@
+{% load terrain %}<section class="carte bloc" id="tendances">
+  <h2>Tendances match par match</h2>
+  {% with t=valeurs.tendances %}
+    {% if not t %}
+      <p class="vide">Bloc non calculé : relancer <code>python manage.py recalculer_indicateurs</code>.</p>
+    {% elif not t.matchs %}
+      <p class="vide">Aucun match importé.</p>
+    {% else %}
+      <p class="aide">{{ t.nb_calcules }} match{{ t.nb_calcules|pluralize }} calculé{{ t.nb_calcules|pluralize }} sur {{ t.matchs|length }}, du plus récent au plus ancien.</p>
+      <div class="defile">
+        <table class="matchs tendances">
+          <thead>
+            <tr>
+              <th>Date</th><th>Lieu</th><th>Équipe rencontrée</th><th>Score</th>
+              <th>xG pour – contre</th><th>Écart d'xG</th><th>Tirs pour – contre</th>
+              <th>Possession</th><th>PPDA</th><th>Formation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in t.matchs %}
+              <tr>
+                <td>{{ m.date }}</td>
+                <td>{% if m.a_domicile %}Dom.{% else %}Ext.{% endif %}</td>
+                <td>{{ m.rencontre|default:"—" }}</td>
+                <td>{% if m.score_pour is None or m.score_contre is None %}—{% else %}{{ m.score_pour }} – {{ m.score_contre }}{% if m.resultat == "V" or m.resultat == "N" or m.resultat == "D" %} <span class="res res-{{ m.resultat }}">{{ m.resultat }}</span>{% endif %}{% endif %}</td>
+                {% if m.calcule %}
+                  <td>{{ m.xg_pour|floatformat:2|default:"—" }} – {{ m.xg_contre|floatformat:2|default:"—" }}</td>
+                  <td>{% if m.ecart_xg > 0 %}+{% endif %}{{ m.ecart_xg|floatformat:2|default:"—" }}</td>
+                  <td>{{ m.tirs_pour|default_if_none:"—" }} – {{ m.tirs_contre|default_if_none:"—" }}</td>
+                  <td>{% if m.possession_pct is not None %}{{ m.possession_pct|floatformat:1 }} %{% else %}—{% endif %}</td>
+                  <td>{{ m.ppda|floatformat:1|default:"—" }}</td>
+                  <td>{{ m.formation|default:"—" }}</td>
+                {% else %}
+                  <td colspan="6" class="vide">non calculé</td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% ecarts_xg t.ecarts_xg %}
+    {% endif %}
+  {% endwith %}
+</section>

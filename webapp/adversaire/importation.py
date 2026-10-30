@@ -473,7 +473,11 @@ def matchs_du_suivi(suivi):
 def elements_de_fiche(suivi):
     """(pk des NB_DERNIERS matchs, éléments pour `fiche.construire`). Lit les
     lignes d'indicateurs À JOUR de la version de calcul, jamais le brut."""
-    matchs = list(matchs_du_suivi(suivi).only("date", "domicile", "exterieur")[:NB_DERNIERS])
+    # Une seule requête (jointure) : noms des équipes et score officiel, aucune colonne `*_z`.
+    matchs = list(matchs_du_suivi(suivi)
+                  .select_related("domicile", "exterieur")
+                  .only("date", "domicile", "exterieur", "score_domicile", "score_exterieur",
+                        "domicile__nom", "exterieur__nom")[:NB_DERNIERS])
     lignes = {(ligne["match_id"], ligne["equipe_id"]): ligne["valeurs"]
               for ligne in IndicateursMatchEquipe.objects
               .filter(match_id__in=[m.pk for m in matchs],
@@ -483,7 +487,11 @@ def elements_de_fiche(suivi):
     for m in matchs:
         a_domicile = m.domicile_id == suivi.equipe_id
         autre = m.exterieur_id if a_domicile else m.domicile_id
+        pour, contre = ((m.score_domicile, m.score_exterieur) if a_domicile
+                        else (m.score_exterieur, m.score_domicile))
         elements.append({"match": m.pk, "date": m.date.isoformat(), "a_domicile": a_domicile,
+                         "rencontre": (m.exterieur if a_domicile else m.domicile).nom,
+                         "score_pour": pour, "score_contre": contre,
                          "pour": lignes.get((m.pk, suivi.equipe_id)),
                          "contre": lignes.get((m.pk, autre))})
     return [m.pk for m in matchs], elements

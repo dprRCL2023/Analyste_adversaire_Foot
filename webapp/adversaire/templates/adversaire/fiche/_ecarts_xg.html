@@ -1,0 +1,10 @@
+{% load l10n %}{% if colonnes %}
+<figure class="ecarts-xg">
+  <figcaption>Écart d'xG par match (pour − contre), du plus ancien au plus récent</figcaption>
+  {% localize off %}<svg class="ecarts-xg-svg" viewBox="0 0 {{ largeur }} {{ hauteur }}" role="img" aria-label="Écart d'xG par match"><line class="ligne-zero" x1="0" y1="{{ ligne_zero }}" x2="{{ largeur }}" y2="{{ ligne_zero }}"/>{% for c in colonnes %}{% if c.classe %}<rect class="barre-{{ c.classe }}" x="{{ c.x }}" y="{{ c.y }}" width="{{ largeur_barre }}" height="{{ c.hauteur }}"><title>{{ c.date }} · {{ c.rencontre }} : {{ c.valeur|floatformat:2|default:"—" }}</title></rect>{% elif not c.calcule %}<text class="non-calcule" x="{{ c.milieu }}" y="{{ ligne_zero }}" text-anchor="middle">n.c.</text>{% endif %}{% endfor %}</svg>{% endlocalize %}
+  <ol class="ecarts-xg-legende">
+    {% for c in colonnes %}<li><span>{{ c.date }}</span><span>{{ c.rencontre|default:"—" }}</span>{% if not c.calcule %}<span class="vide">non calculé</span>{% elif c.valeur is None %}<span>—</span>{% else %}<span class="{% if c.valeur > 0 %}valeur-pour{% elif c.valeur < 0 %}valeur-contre{% endif %}">{% if c.valeur > 0 %}+{% endif %}{{ c.valeur|floatformat:2 }}</span>{% endif %}</li>
+    {% endfor %}
+  </ol>
+</figure>
+{% endif %}

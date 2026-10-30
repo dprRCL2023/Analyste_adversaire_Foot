@@ -1,4 +1,4 @@
-"""Terrains et barres SVG de la fiche adversaire.
+"""Terrains et barres SVG de la fiche adversaire (dont l'écart d'xG, 3c-3).
 
 CSP stricte : le SVG est dessiné par ATTRIBUTS (x, y, class…), sans `style=`
 ni script ; les couleurs sont dans `app.css`. Les coordonnées, niveaux et
@@ -18,6 +18,12 @@ TAILLE_CASE = 10  # repère StatsBomb 120 × 80, grille de 10 × 10
 NIVEAU_MAX = 5
 CLASSES_BARRE = ("pour", "contre")
 DECIMALES = (0, 1, 2)  # 0 : comptes ; 1 : pourcentages ; 2 : xG
+# Écart d'xG : repère 100 × 60, une colonne de 20 par match, ligne zéro à y = 30.
+NB_COLONNES_ECART = 5
+LARGEUR_COLONNE = 20
+LARGEUR_BARRE = 12
+LIGNE_ZERO = 30
+DEMI_HAUTEUR = 28
 
 
 def _entier(valeur):
@@ -90,3 +96,33 @@ def barres(lignes, unite="", decimales=2):
             propres.append({"libelle": libelle if isinstance(libelle, str) else "", "series": series})
     return {"lignes": propres, "unite": unite if isinstance(unite, str) else "",
             "decimales": _decimales(decimales)}
+
+
+@register.inclusion_tag("adversaire/fiche/_ecarts_xg.html")
+def ecarts_xg(colonnes):
+    """Barres verticales de l'écart d'xG, de part et d'autre de zéro :
+    `[{"date", "rencontre", "calcule", "valeur", "hauteur", "classe"}]` de la
+    fiche, du plus ancien au plus récent ; 5 colonnes au plus. Hauteur non
+    entière → 0, ramenée entre 0 et 100 ; classe hors liste fermée → aucune
+    barre. Les coordonnées sont des entiers tirés de l'indice et de la hauteur."""
+    colonnes = [c for c in (colonnes if isinstance(colonnes, list) else []) if isinstance(c, dict)]
+    propres = []
+    for i, colonne in enumerate(colonnes[:NB_COLONNES_ECART]):
+        classe = colonne.get("classe") if colonne.get("classe") in CLASSES_BARRE else None
+        hauteur = colonne.get("hauteur")
+        hauteur = min(100, max(0, hauteur)) if _entier(hauteur) and classe else 0
+        barre = hauteur * DEMI_HAUTEUR // 100
+        date, rencontre = colonne.get("date"), colonne.get("rencontre")
+        propres.append({
+            "x": i * LARGEUR_COLONNE + (LARGEUR_COLONNE - LARGEUR_BARRE) // 2,
+            "milieu": i * LARGEUR_COLONNE + LARGEUR_COLONNE // 2,
+            "y": LIGNE_ZERO - barre if classe == "pour" else LIGNE_ZERO,
+            "hauteur": barre,
+            "classe": classe if barre else None,
+            "calcule": colonne.get("calcule") is True,
+            "valeur": _nombre(colonne.get("valeur")),
+            "date": date if isinstance(date, str) else "",
+            "rencontre": rencontre if isinstance(rencontre, str) else "",
+        })
+    return {"colonnes": propres, "largeur_barre": LARGEUR_BARRE, "ligne_zero": LIGNE_ZERO,
+            "largeur": NB_COLONNES_ECART * LARGEUR_COLONNE, "hauteur": 2 * LIGNE_ZERO}

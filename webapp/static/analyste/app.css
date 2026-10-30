@@ -174,6 +174,15 @@ button {
 .barre-contre { fill: #C0392B; }
 .valeur-pour { color: var(--night); font-weight: 600; }
 .valeur-contre { color: #A12A2A; font-weight: 600; }
+/* Tendances match par match (étape 3c-3) : écart d'xG en barres verticales. */
+.ecarts-xg { margin: 12px 0 0; max-width: 560px; }
+.ecarts-xg figcaption { font-weight: 600; margin-bottom: 4px; }
+.ecarts-xg-svg { display: block; width: 100%; height: auto; background: var(--fond); }
+.ligne-zero { stroke: var(--gris); stroke-width: .5; }
+.non-calcule { fill: var(--gris); font-size: 4px; }
+.ecarts-xg-legende { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.ecarts-xg-legende li { text-align: center; }
+.ecarts-xg-legende span { display: block; }
 .selon-score { margin: 0 0 8px; }
 .deux-colonnes { display: flex; flex-wrap: wrap; gap: 16px; }
 .deux-colonnes > div { flex: 1 1 260px; }

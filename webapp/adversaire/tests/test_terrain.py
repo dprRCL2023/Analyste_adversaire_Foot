@@ -130,3 +130,64 @@ class BarresTest(SimpleTestCase):
 
     def test_aucune_ligne(self):
         self.assertIn("Aucune donnée", rendre("{% barres l %}", l=None))
+
+
+class EcartsXgTest(SimpleTestCase):
+    """Étape 3c-3 : barres verticales de l'écart d'xG (repère 100 × 60, zéro à y = 30)."""
+
+    def colonnes(self):
+        return [
+            {"date": "11/10/2026", "rencontre": "Club Inventé", "calcule": False,
+             "valeur": None, "hauteur": 0, "classe": None},
+            {"date": "18/10/2026", "rencontre": "Racing Fictif", "calcule": True,
+             "valeur": -0.9, "hauteur": 75, "classe": "contre"},
+            {"date": "25/10/2026", "rencontre": "Olympique Imaginaire", "calcule": True,
+             "valeur": 1.2, "hauteur": 100, "classe": "pour"},
+        ]
+
+    def test_coordonnees_entieres(self):
+        c = terrain.ecarts_xg(self.colonnes())["colonnes"]
+        # Colonne i : x = 20 i + 4 ; barre = hauteur × 28 // 100 (75 → 21, 100 → 28).
+        self.assertEqual([(x["x"], x["y"], x["hauteur"], x["classe"], x["calcule"]) for x in c],
+                         [(4, 30, 0, None, False), (24, 30, 21, "contre", True), (44, 2, 28, "pour", True)])
+        self.assertEqual(c[0]["milieu"], 10)
+
+    def test_rendu(self):
+        html = rendre("{% ecarts_xg c %}", c=self.colonnes())
+        self.assertIn('<svg class="ecarts-xg-svg" viewBox="0 0 100 60"', html)
+        self.assertIn('<line class="ligne-zero" x1="0" y1="30" x2="100" y2="30"/>', html)
+        self.assertIn('<rect class="barre-contre" x="24" y="30" width="12" height="21">'
+                      '<title>18/10/2026 · Racing Fictif : -0,90</title></rect>', html)
+        self.assertIn('<rect class="barre-pour" x="44" y="2" width="12" height="28">', html)
+        self.assertIn('<text class="non-calcule" x="10" y="30" text-anchor="middle">n.c.</text>', html)
+        self.assertIn('<span class="valeur-pour">+1,20</span>', html)
+        self.assertIn('<span class="valeur-contre">-0,90</span>', html)
+        self.assertIn('<span class="vide">non calculé</span>', html)
+        self.assertNotRegex(html, r'="[^"]*\d,\d[^"]*"')  # aucune virgule dans un attribut
+        self.assertNotRegex(html, r"\sstyle\s*=")
+
+    def test_valeurs_inattendues_controlees(self):
+        colonnes = [
+            {"hauteur": 250, "classe": "pour", "calcule": True, "valeur": 3},
+            {"hauteur": -5, "classe": "contre", "calcule": True},
+            {"hauteur": 50.5, "classe": "pour", "calcule": True},
+            {"hauteur": True, "classe": "pour", "calcule": True},
+            {"hauteur": 50, "classe": 'x" onclick="alert(1)', "calcule": True,
+             "date": "<b>", "rencontre": 7, "valeur": "x"},
+            "pas une colonne",
+            {"hauteur": 50, "classe": "pour"}, {"hauteur": 50, "classe": "pour"},  # 6e et 7e : ignorées
+        ]
+        c = terrain.ecarts_xg(colonnes)["colonnes"]
+        self.assertEqual(len(c), 5)
+        self.assertEqual([(x["hauteur"], x["classe"]) for x in c],
+                         [(28, "pour"), (0, None), (0, None), (0, None), (0, None)])
+        self.assertEqual((c[4]["date"], c[4]["rencontre"], c[4]["valeur"]), ("<b>", "", None))
+        html = rendre("{% ecarts_xg c %}", c=colonnes)
+        self.assertNotIn("onclick", html)
+        self.assertNotIn("<b>", html)
+        self.assertIn("&lt;b&gt;", html)
+
+    def test_aucune_colonne(self):
+        for colonnes in (None, "abc", []):
+            with self.subTest(colonnes=colonnes):
+                self.assertNotIn("<svg", rendre("{% ecarts_xg c %}", c=colonnes))

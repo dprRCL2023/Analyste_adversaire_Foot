@@ -16,6 +16,7 @@ class Bloc(NamedTuple):
 
 BLOCS_FICHE = [
     Bloc("resultats", "Résultats et forme", "resultats", "adversaire/fiche/_resultats.html"),
+    Bloc("tendances", "Tendances match par match", "tendances", "adversaire/fiche/_tendances.html"),
     Bloc("systeme", "Système et XI probable", "systeme", "adversaire/fiche/_systeme.html"),
     Bloc("joueurs", "Joueurs clés", "joueurs", "adversaire/fiche/_joueurs.html"),
     Bloc("attaque", "Attaque", "attaque", "adversaire/fiche/_attaque.html"),

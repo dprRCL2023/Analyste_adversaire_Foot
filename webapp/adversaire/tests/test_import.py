@@ -5,7 +5,9 @@ from datetime import date
 from unittest import mock
 
 from django.core.management import CommandError, call_command
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 
 from adversaire import importation
 from adversaire.analyse import fiche, indicateurs
@@ -454,6 +456,20 @@ class FicheImportTest(TestCase):
         self.assertEqual(r["domicile"]["possession_pct"], 100.0)
         self.assertEqual(r["exterieur"]["possession_pct"], 25.0)
         self.assertEqual(r["total"]["possession_pct"], 40.0)
+
+    def test_elements_de_fiche_nom_et_score_sans_requete_en_plus(self):
+        """Étape 3c-3 : équipe rencontrée et score officiel, vus par l'adversaire,
+        lus dans la requête des matchs (jointure) ; aucune colonne `*_z`."""
+        importer(FauxClient([inv.match(601, "2026-10-01", scores=(3, 1)),
+                             inv.match(602, "2026-10-08", domicile=103, exterieur=inv.ADVERSAIRE,
+                                       scores=(2, 2))]))
+        suivi = AdversaireSuivi.objects.get()
+        with CaptureQueriesContext(connection) as requetes:
+            _pks, elements = importation.elements_de_fiche(suivi)
+        self.assertEqual(len(requetes), 2)  # matchs (avec les équipes), puis indicateurs
+        self.assertNotIn("_z", " ".join(q["sql"] for q in requetes))
+        self.assertEqual([(e["rencontre"], e["score_pour"], e["score_contre"], e["a_domicile"]) for e in elements],
+                         [("Racing Fictif", 2, 2, False), ("Olympique Imaginaire", 3, 1, True)])
 
     def test_lignes_d_une_ancienne_version_ignorees(self):
         importer(FauxClient(self.matchs))

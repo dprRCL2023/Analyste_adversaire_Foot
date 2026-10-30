@@ -54,6 +54,8 @@ Périmètre de la 1re version : les **5 derniers matchs** de l'adversaire.
      - **3c-2 — fait** (plan validé le 30/10/2026) : affichage d'Attaque,
        Défense (avec Danger, Transitions, gardien), CPA et 360 (terrains SVG
        en grilles, barres), SANS modèle ni migration ; `VERSION_FICHE = 2`.
+     - **3c-3 — fait** (plan validé le 30/10/2026, issue n°42) : bloc
+       « Tendances match par match », écart d'xG en barres ; `VERSION_FICHE = 3`.
    - Ensuite : **Après-match** (rapport d'après-match, sur la table de 3b).
 4. Second Spectrum (physique, rapprochement SS ↔ SB par date + équipes).
 5. Séquences horodatées, playlists, notes (sans vidéo).
@@ -270,6 +272,45 @@ python manage.py importer_adversaire --competition C --saison S --equipe E \
   échappées. Couleurs `niv-0` à `niv-5` (vert pâle → rouge) dans `app.css`.
 - ⚠️ `floatformat` localise TOUJOURS (virgule en fr), même sous
   `{% localize off %}` : ne jamais l'employer dans un attribut SVG.
+
+## Tendances match par match (étape 3c-3)
+
+- **`VERSION_FICHE = 3`** : `fiche._tendances(elements)`, sous la clé
+  `tendances` de `construire()`. C'est le SEUL bloc qui reçoit aussi les
+  matchs non calculés (les autres ne voient que les matchs à deux lignes).
+  Base d'avant 3c-3 : `python manage.py recalculer_indicateurs` (fiches
+  seulement, `VERSION_CALCUL` reste à 2, aucun brut relu).
+- **Éléments de la fiche** (`importation.elements_de_fiche`) : en plus,
+  `rencontre` (nom de l'équipe rencontrée), `score_pour` / `score_contre`
+  (score OFFICIEL de `Match`, vu par l'adversaire — choix de Julien, pas les
+  buts calculés). Même requête qu'avant, avec une jointure sur les équipes
+  (`select_related` + `only`) : aucune colonne `*_z`. Le score étant remis à
+  jour à chaque import, la fiche reconstruite en fin d'import le suit.
+- **Une ligne par match**, du plus récent au plus ancien : date
+  (« JJ/MM/AAAA », mise en forme à l'import), Dom./Ext., équipe rencontrée,
+  score et V/N/D (même règle que `views.ligne_match`, recopiée en pur), xG
+  pour / contre et écart (pour − contre), tirs, possession et PPDA (par
+  `_bilan([e])` : mêmes formules et arrondis que le bloc Résultats),
+  formation de départ (« 4-3-3 »). **Match non calculé** : `calcule` faux,
+  indicateurs à None, « non calculé » sur une cellule fusionnée ; une valeur
+  absente d'un match calculé s'affiche « — ».
+- **Écart d'xG en barres verticales** de part et d'autre de zéro (choix de
+  Julien : barres, pas de courbe), du plus ancien au plus récent :
+  `fiche.hauteurs_ecart` donne à l'import une hauteur entière de 0 à 100
+  rapportée au plus grand |écart| et une classe `pour` (> 0) ou `contre`
+  (< 0) ; écart nul ou absent → hauteur 0, classe None. Balise
+  `ecarts_xg(colonnes)` (`templatetags/terrain.py`, gabarit
+  `fiche/_ecarts_xg.html`) : CONTRÔLE seulement (5 colonnes au plus, hauteur
+  entière bornée, classe d'une liste fermée), coordonnées entières tirées de
+  l'indice (repère 100 × 60, zéro à y = 30). La valeur n'apparaît que dans
+  `<title>` et la légende (`floatformat:2`, échappée). Match non calculé :
+  « n.c. ».
+- **Page** : `fiche/_tendances.html`, déclaré par UNE ligne de `BLOCS_FICHE`
+  (juste après Résultats ; retirer la ligne retire le bloc et son lien).
+  Fiche v2 sans `tendances` : « Bloc non calculé » + bandeau « Fiche à
+  recalculer ». Toujours 3 requêtes métier (test sur le SQL), ni
+  `IndicateursMatchEquipe` ni `*_z` lus ; nom de l'équipe rencontrée échappé
+  (test avec un nom hostile).
 
 ## Commandes
 

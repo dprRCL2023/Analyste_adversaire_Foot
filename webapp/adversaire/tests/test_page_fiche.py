@@ -22,6 +22,7 @@ from adversaire.models import (AdversaireSuivi, Competition, DonneesMatch, Equip
                                FicheAdversaire, Match)
 
 from . import donnees_inventees as inv
+from .test_fiche_calcul import elements_tendances
 
 NOM_HOSTILE = '<script>alert("x")</script>'
 
@@ -440,7 +441,7 @@ class PageFicheBlocs3c2Test(TestCase):
         self.assertContains(self.page(valeurs_3c2(), version=1), "Fiche à recalculer")
 
     def test_fiche_a_jour_sans_bandeau(self):
-        self.assertNotContains(self.page(valeurs_3c2(), version=2), "Fiche à recalculer")
+        self.assertNotContains(self.page(valeurs_3c2(), version=fiche.VERSION_FICHE), "Fiche à recalculer")
 
     def test_sommaire_dans_l_ordre_de_la_liste(self):
         contenu = self.page(valeurs_3c2()).content.decode()
@@ -453,6 +454,7 @@ class PageFicheBlocs3c2Test(TestCase):
         contenu = self.page(valeurs_3c2()).content.decode()
         attendu = [
             ("resultats", "Résultats et forme"),
+            ("tendances", "Tendances match par match"),
             ("systeme", "Système et XI probable"),
             ("joueurs", "Joueurs clés"),
             ("attaque", "Attaque"),
@@ -526,6 +528,119 @@ class PageFicheBlocs3c2Test(TestCase):
             with CaptureQueriesContext(connection) as moins:
                 self.client.get(url)
         self.assertEqual(len(toutes), len(moins))
+
+
+class PageTendancesTest(TestCase):
+    """Étape 3c-3 : bloc « Tendances match par match », lu dans `valeurs.tendances`."""
+
+    @classmethod
+    def setUpTestData(cls):
+        competition = Competition.objects.create(sb_competition_id=inv.COMPETITION, sb_season_id=inv.SAISON,
+                                                 nom="Ligue Inventée", saison="2026/2027")
+        adversaire = Equipe.objects.create(sb_team_id=inv.ADVERSAIRE, nom="Adversaire Inventé")
+        autre = Equipe.objects.create(sb_team_id=102, nom="Autre Inventée")
+        cls.suivi = AdversaireSuivi.objects.create(equipe=adversaire, competition=competition,
+                                                   importe_le=timezone.now())
+        cls.matchs = [Match.objects.create(sb_match_id=5950 + k, competition=competition,
+                                           date=date(2026, 10, 25) - timedelta(days=7 * k),
+                                           domicile=adversaire, exterieur=autre, score_domicile=1,
+                                           score_exterieur=0, statut="available")
+                      for k in range(3)]
+        cls.compte = get_user_model().objects.create_user("staff-tendances", password="x")
+        cls.compte.groups.add(Group.objects.get(name="staff"))
+
+    def setUp(self):
+        self.client.force_login(self.compte)
+
+    def page(self, valeurs):
+        FicheAdversaire.objects.update_or_create(suivi=self.suivi, defaults={
+            "version_fiche": fiche.VERSION_FICHE, "matchs": [m.pk for m in self.matchs],
+            "nb_matchs_calcules": 2, "valeurs": valeurs})
+        return self.client.get(reverse("fiche", args=[self.suivi.id]))
+
+    def valeurs(self, rencontre=None):
+        elements = elements_tendances()
+        if rencontre is not None:
+            for e in elements:
+                e["rencontre"] = rencontre
+        return fiche.construire(elements)
+
+    def test_bloc_et_lignes(self):
+        reponse = self.page(self.valeurs())
+        self.assertEqual(reponse.status_code, 200)
+        self.assertContains(reponse, 'id="tendances"', count=1)
+        self.assertContains(reponse, 'href="#tendances"', count=1)
+        contenu = compacter(reponse.content.decode())
+        self.assertIn("2 matchs calculés sur 3", contenu)
+        # Match 0 : 2 – 1 V, xG 1,80 – 0,60, écart +1,20, tirs 10 – 4, 60,0 %, PPDA 10,0, 4-3-3.
+        self.assertIn('<tr><td>25/10/2026</td><td>Dom.</td><td>Olympique Imaginaire</td>'
+                      '<td>2 – 1 <span class="res res-V">V</span></td>'
+                      '<td>1,80 – 0,60</td><td>+1,20</td><td>10 – 4</td><td>60,0 %</td>'
+                      '<td>10,0</td><td>4-3-3</td></tr>', contenu)
+        # Match 1 : valeurs absentes « — ».
+        self.assertIn('<tr><td>18/10/2026</td><td>Ext.</td><td>Racing Fictif</td>'
+                      '<td>0 – 0 <span class="res res-N">N</span></td>'
+                      '<td>0,40 – 1,30</td><td>-0,90</td><td>3 – 12</td><td>—</td>'
+                      '<td>—</td><td>—</td></tr>', contenu)
+        # Match 2 : non calculé, score gardé.
+        self.assertIn('<tr><td>11/10/2026</td><td>Dom.</td><td>Club Inventé</td>'
+                      '<td>1 – 3 <span class="res res-D">D</span></td>'
+                      '<td colspan="6" class="vide">non calculé</td></tr>', contenu)
+        # Barres : du plus ancien au plus récent.
+        self.assertIn('<rect class="barre-contre" x="24" y="30" width="12" height="21">', contenu)
+        self.assertIn('<rect class="barre-pour" x="44" y="2" width="12" height="28">', contenu)
+        self.assertIn('<text class="non-calcule" x="10" y="30" text-anchor="middle">n.c.</text>', contenu)
+
+    def test_place_juste_apres_resultats(self):
+        contenu = self.page(self.valeurs()).content.decode()
+        self.assertLess(contenu.index('id="resultats"'), contenu.index('id="tendances"'))
+        self.assertLess(contenu.index('id="tendances"'), contenu.index('id="systeme"'))
+
+    def test_nom_hostile_echappe(self):
+        contenu = self.page(self.valeurs(rencontre=NOM_HOSTILE)).content.decode()
+        self.assertNotIn("<script>", contenu)
+        self.assertIn("<td>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</td>", contenu)
+        self.assertIn("· &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; :", contenu)  # <title> du SVG
+
+    def test_aucun_style_ni_gestionnaire_ni_virgule_dans_un_attribut(self):
+        contenu = self.page(self.valeurs()).content.decode()
+        self.assertNotRegex(contenu, r"\sstyle\s*=")
+        self.assertNotRegex(contenu, r"\son[a-z]+\s*=")
+        self.assertNotRegex(contenu, r'\s(?:x|y|x1|y1|x2|y2|width|height|viewBox)="[^"]*,')
+
+    def test_fiche_v2_sans_tendances_bloc_non_calcule(self):
+        valeurs = self.valeurs()
+        del valeurs["tendances"]
+        FicheAdversaire.objects.update_or_create(suivi=self.suivi, defaults={
+            "version_fiche": 2, "matchs": [m.pk for m in self.matchs],
+            "nb_matchs_calcules": 2, "valeurs": valeurs})
+        reponse = self.client.get(reverse("fiche", args=[self.suivi.id]))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertContains(reponse, "Fiche à recalculer")
+        self.assertContains(reponse, "Bloc non calculé")
+        self.assertContains(reponse, 'id="tendances"')
+
+    def test_retirer_la_ligne_retire_le_bloc_et_son_lien(self):
+        restantes = [b for b in blocs.BLOCS_FICHE if b.cle != "tendances"]
+        with mock.patch.object(blocs, "BLOCS_FICHE", restantes):
+            reponse = self.page(self.valeurs())
+        self.assertEqual(reponse.status_code, 200)
+        self.assertNotContains(reponse, 'id="tendances"')
+        self.assertNotContains(reponse, 'href="#tendances"')
+        self.assertContains(reponse, 'id="resultats"')
+
+    def test_trois_requetes_metier_sans_indicateurs_ni_brut(self):
+        self.page(self.valeurs())
+        with CaptureQueriesContext(connection) as requetes:
+            self.client.get(reverse("fiche", args=[self.suivi.id]))
+        metier = [q["sql"] for q in requetes if "adversaire_" in q["sql"]]
+        self.assertLessEqual(len(metier), 3, metier)  # suivi, matchs, fiche
+        sql = " ".join(q["sql"] for q in requetes).lower()
+        self.assertNotIn("indicateursmatchequipe", sql)
+        self.assertNotIn("evenements_z", sql)
+        self.assertNotIn("compositions_z", sql)
+        sans_annotation = re.sub(r"frames_360_z[`\"]?\s+is\s+not\s+null", "", sql)
+        self.assertNotIn("frames_360_z", sans_annotation)
 
 
 class FichePeriodeTest(TestCase):

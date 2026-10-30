@@ -253,10 +253,6 @@ class Version2Test(SimpleTestCase):
     """Étape 3c-2 (`VERSION_FICHE = 2`) : chaque valeur attendue est un LITTÉRAL
     calculé à la main dans le commentaire, jamais recalculé par le code testé."""
 
-    def test_version_de_fiche(self):
-        self.assertEqual(fiche.VERSION_FICHE, 2)
-        self.assertEqual(fiche.construire([])["version_fiche"], 2)
-
     def test_ppda_rapport_des_sommes_bloc_defense(self):
         valeurs = fiche.construire([
             element(0, {"defense": {"ppda_passes_adverses": 30, "ppda_actions": 4}}),
@@ -390,6 +386,121 @@ class Version2Test(SimpleTestCase):
         # 10 attaquants sur 4 corners.
         self.assertEqual(t["corners_pour"]["attaquants_6m"], 2.5)
         self.assertIsNone(fiche.construire([element(0, {"trois_cent_soixante": None})])["trois_cent_soixante"])
+
+
+def elements_tendances():
+    """Trois matchs inventés, du plus récent au plus ancien ; le dernier n'est pas calculé."""
+    return [
+        {"match": 30, "date": "2026-10-25", "a_domicile": True, "rencontre": "Olympique Imaginaire",
+         "score_pour": 2, "score_contre": 1,
+         "pour": {"resultat": {"xg_pour": 1.8, "xg_contre": 0.6, "tirs_pour": 10, "tirs_contre": 4},
+                  "attaque": {"passes": 300},
+                  "defense": {"ppda_passes_adverses": 120, "ppda_actions": 12},
+                  "systeme": {"formation_depart": "433"}},
+         "contre": {"attaque": {"passes": 200}}},
+        {"match": 20, "date": "2026-10-18", "a_domicile": False, "rencontre": "Racing Fictif",
+         "score_pour": 0, "score_contre": 0,
+         "pour": {"resultat": {"xg_pour": 0.4, "xg_contre": 1.3, "tirs_pour": 3, "tirs_contre": 12}},
+         "contre": {}},
+        {"match": 10, "date": "2026-10-11", "a_domicile": True, "rencontre": "Club Inventé",
+         "score_pour": 1, "score_contre": 3, "pour": None, "contre": {"attaque": {"passes": 5}}},
+    ]
+
+
+class TendancesTest(SimpleTestCase):
+    """Étape 3c-3 (`VERSION_FICHE = 3`) : tendances match par match. Valeurs
+    attendues écrites à la main dans les commentaires."""
+
+    def test_version_de_fiche(self):
+        self.assertEqual(fiche.VERSION_FICHE, 3)
+        self.assertEqual(fiche.construire([])["version_fiche"], 3)
+
+    def test_lignes_par_match(self):
+        t = fiche.construire(elements_tendances())["tendances"]
+        self.assertEqual(t["nb_calcules"], 2)
+        self.assertEqual([m["match"] for m in t["matchs"]], [30, 20, 10])  # plus récent d'abord
+        m0, m1, m2 = t["matchs"]
+        # Match 0 : écart 1,8 − 0,6 = 1,2 ; possession 300 / (300 + 200) = 60 % ; PPDA 120 / 12 = 10.
+        self.assertEqual(m0, {
+            "match": 30, "date": "25/10/2026", "a_domicile": True, "rencontre": "Olympique Imaginaire",
+            "score_pour": 2, "score_contre": 1, "resultat": "V", "calcule": True,
+            "xg_pour": 1.8, "xg_contre": 0.6, "ecart_xg": 1.2, "tirs_pour": 10, "tirs_contre": 4,
+            "possession_pct": 60.0, "ppda": 10.0, "formation": "4-3-3"})
+        # Match 1 : écart 0,4 − 1,3 = −0,9 ; ni passes, ni PPDA, ni formation.
+        self.assertEqual((m1["resultat"], m1["a_domicile"], m1["ecart_xg"], m1["tirs_pour"], m1["tirs_contre"]),
+                         ("N", False, -0.9, 3, 12))
+        self.assertEqual((m1["possession_pct"], m1["ppda"], m1["formation"]), (None, None, None))
+        # Match 2 : non calculé, mais date, lieu, équipe et score connus.
+        self.assertEqual(m2, {
+            "match": 10, "date": "11/10/2026", "a_domicile": True, "rencontre": "Club Inventé",
+            "score_pour": 1, "score_contre": 3, "resultat": "D", "calcule": False,
+            "xg_pour": None, "xg_contre": None, "ecart_xg": None, "tirs_pour": None, "tirs_contre": None,
+            "possession_pct": None, "ppda": None, "formation": None})
+
+    def test_ecarts_xg_du_plus_ancien_au_plus_recent(self):
+        colonnes = fiche.construire(elements_tendances())["tendances"]["ecarts_xg"]
+        # Plus grand écart en valeur absolue : 1,2 → 100 ; 0,9 / 1,2 = 75 %.
+        self.assertEqual([(c["date"], c["calcule"], c["valeur"], c["hauteur"], c["classe"]) for c in colonnes],
+                         [("11/10/2026", False, None, 0, None),
+                          ("18/10/2026", True, -0.9, 75, "contre"),
+                          ("25/10/2026", True, 1.2, 100, "pour")])
+        self.assertEqual(colonnes[2]["rencontre"], "Olympique Imaginaire")
+
+    def test_match_non_calcule_sans_erreur(self):
+        for pour, contre in ((None, None), ({"resultat": {"xg_pour": 1}}, None), (None, {}), ("x", {})):
+            with self.subTest(pour=pour, contre=contre):
+                t = fiche.construire([{"match": 1, "date": "2026-10-01", "a_domicile": False,
+                                       "pour": pour, "contre": contre}])["tendances"]
+                ligne = t["matchs"][0]
+                self.assertFalse(ligne["calcule"])
+                self.assertEqual((ligne["ecart_xg"], ligne["possession_pct"], ligne["rencontre"],
+                                  ligne["score_pour"], ligne["resultat"]), (None, None, "", None, None))
+                self.assertEqual((t["nb_calcules"], t["ecarts_xg"][0]["hauteur"]), (0, 0))
+
+    def test_valeurs_mal_formees(self):
+        t = fiche.construire([{
+            "match": "x", "date": None, "a_domicile": "oui", "rencontre": 5,
+            "score_pour": True, "score_contre": -1,
+            "pour": {"resultat": {"xg_pour": float("nan"), "xg_contre": "0,5", "tirs_pour": "3"},
+                     "systeme": {"formation_depart": 433}},
+            "contre": {}}])["tendances"]
+        ligne = t["matchs"][0]
+        self.assertTrue(ligne["calcule"])
+        self.assertEqual((ligne["match"], ligne["date"], ligne["a_domicile"], ligne["rencontre"]),
+                         (None, "", False, ""))
+        self.assertEqual((ligne["score_pour"], ligne["score_contre"], ligne["resultat"]), (None, None, None))
+        self.assertEqual((ligne["xg_pour"], ligne["xg_contre"], ligne["ecart_xg"], ligne["tirs_pour"],
+                          ligne["formation"]), (None, None, None, None, None))
+        self.assertEqual((t["ecarts_xg"][0]["hauteur"], t["ecarts_xg"][0]["classe"]), (0, None))
+
+    def test_resultat_selon_le_score(self):
+        for pour, contre, attendu in ((3, 0, "V"), (1, 1, "N"), (0, 2, "D"), (None, 2, None)):
+            with self.subTest(pour=pour, contre=contre):
+                t = fiche.construire([{"match": 1, "date": "2026-10-01", "a_domicile": True,
+                                       "score_pour": pour, "score_contre": contre,
+                                       "pour": None, "contre": None}])["tendances"]
+                self.assertEqual(t["matchs"][0]["resultat"], attendu)
+
+    def test_hauteurs_ecart(self):
+        self.assertEqual(fiche.hauteurs_ecart([0.5, -1.0, None, 0]),
+                         [{"hauteur": 50, "classe": "pour"}, {"hauteur": 100, "classe": "contre"},
+                          {"hauteur": 0, "classe": None}, {"hauteur": 0, "classe": None}])
+        self.assertEqual(fiche.hauteurs_ecart([0, 0.0]), [{"hauteur": 0, "classe": None}] * 2)
+        self.assertEqual(fiche.hauteurs_ecart([]), [])
+        self.assertEqual(fiche.hauteurs_ecart(["x", float("inf"), True, -2]),
+                         [{"hauteur": 0, "classe": None}] * 3 + [{"hauteur": 100, "classe": "contre"}])
+
+    def test_aucun_element_et_deterministe(self):
+        self.assertEqual(fiche.construire([])["tendances"], {"matchs": [], "nb_calcules": 0, "ecarts_xg": []})
+        elements = elements_tendances()
+        valeurs = fiche.construire(elements)
+        self.assertEqual(valeurs, fiche.construire(elements))
+        self.assertEqual(json.loads(json.dumps(valeurs)), valeurs)
+
+    def test_les_autres_blocs_ignorent_toujours_le_match_non_calcule(self):
+        valeurs = fiche.construire(elements_tendances())
+        self.assertEqual(valeurs["resultats"]["total"]["matchs"], 2)
+        self.assertEqual(valeurs["nb_matchs"], 3)
 
 
 class RobustesseTest(SimpleTestCase):

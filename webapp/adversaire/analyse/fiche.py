@@ -2,6 +2,8 @@
 
 `construire(elements)` reçoit, du plus récent au plus ancien, au plus 5
 éléments `{"match": pk, "date": "AAAA-MM-JJ", "a_domicile": bool,
+"rencontre": nom de l'équipe rencontrée, "score_pour": int ou None,
+"score_contre": int ou None (score officiel de `Match`, vu par l'adversaire),
 "pour": valeurs de l'adversaire, "contre": valeurs de l'équipe rencontrée}`
 (`IndicateursMatchEquipe.valeurs`, None si absentes ou périmées) et rend un
 dict JSON prêt à afficher. Ni Django, ni réseau : appelé à l'IMPORT et par
@@ -24,7 +26,8 @@ from .indicateurs import COLONNES, ETATS_SCORE, RANGEES, TRANCHES_15
 
 # 2 (étape 3c-2) : grilles « contre » retournées dans le repère de l'adversaire,
 # bornes de légende des grilles, largeurs des barres (tranches de 15 min, couloirs).
-VERSION_FICHE = 2
+# 3 (étape 3c-3) : tendances match par match (`tendances`), écart d'xG en barres.
+VERSION_FICHE = 3
 
 SEUIL_PEU_JOUE = 90  # minutes cumulées sur les matchs de la fiche
 NB_XI = 11
@@ -202,6 +205,23 @@ def largeurs(valeurs):
     return [max(0, round(100 * v / maximum)) if v is not None else 0 for v in nombres]
 
 
+def hauteurs_ecart(valeurs):
+    """Barre de chaque écart, de part et d'autre de zéro : `{"hauteur", "classe"}`,
+    hauteur entière de 0 à 100 rapportée au plus grand écart en valeur absolue,
+    classe `pour` (écart > 0) ou `contre` (écart < 0). Écart absent ou nul :
+    hauteur 0, classe None."""
+    nombres = [_num(v) for v in valeurs]
+    maximum = max((abs(v) for v in nombres if v is not None), default=0)
+    barres = []
+    for v in nombres:
+        if v is None or v == 0 or maximum <= 0:
+            barres.append({"hauteur": 0, "classe": None})
+        else:
+            barres.append({"hauteur": min(100, round(100 * abs(v) / maximum)),
+                           "classe": "pour" if v > 0 else "contre"})
+    return barres
+
+
 # ── Résultats et forme ───────────────────────────────────────────────────────
 def _bilan(elements):
     n = len(elements)
@@ -257,6 +277,76 @@ def _resultats(elements):
         "domicile": _bilan([e for e in elements if e.get("a_domicile") is True]),
         "exterieur": _bilan([e for e in elements if e.get("a_domicile") is not True]),
         "par_motif": _par_motif(elements),
+    }
+
+
+# ── Tendances match par match (étape 3c-3) ───────────────────────────────────
+def _score(valeur):
+    return valeur if isinstance(valeur, int) and not isinstance(valeur, bool) and valeur >= 0 else None
+
+
+def _issue(pour, contre):
+    """V / N / D d'après le score officiel, None s'il est inconnu (même règle
+    que `views.ligne_match`, recopiée ici en calcul pur)."""
+    if pour is None or contre is None:
+        return None
+    return "V" if pour > contre else "D" if pour < contre else "N"
+
+
+def _date_affichee(date):
+    """« AAAA-MM-JJ » → « JJ/MM/AAAA » ; tout autre texte est gardé tel quel."""
+    date = _texte(date)
+    morceaux = date.split("-")
+    if len(morceaux) == 3 and all(m.isdigit() for m in morceaux):
+        return "/".join(reversed(morceaux))
+    return date
+
+
+def _tendances(elements):
+    """Une ligne par match (TOUS les éléments, calculés ou non), du plus récent
+    au plus ancien ; barres de l'écart d'xG du plus ancien au plus récent.
+    Un match non calculé garde date, lieu, équipe rencontrée et score."""
+    matchs = []
+    for e in elements:
+        score_pour, score_contre = _score(e.get("score_pour")), _score(e.get("score_contre"))
+        ligne = {
+            "match": _ident(e.get("match")),
+            "date": _date_affichee(e.get("date")),
+            "a_domicile": e.get("a_domicile") is True,
+            "rencontre": _texte(e.get("rencontre")),
+            "score_pour": score_pour,
+            "score_contre": score_contre,
+            "resultat": _issue(score_pour, score_contre),
+            "calcule": isinstance(e.get("pour"), dict) and isinstance(e.get("contre"), dict),
+            "xg_pour": None, "xg_contre": None, "ecart_xg": None,
+            "tirs_pour": None, "tirs_contre": None,
+            "possession_pct": None, "ppda": None, "formation": None,
+        }
+        if ligne["calcule"]:
+            resultat = _d(_val(e["pour"], "resultat"))
+            xg_pour, xg_contre = _r(_num(resultat.get("xg_pour"))), _r(_num(resultat.get("xg_contre")))
+            # Mêmes formules et mêmes arrondis que le bloc Résultats, sur ce seul match.
+            bilan = _bilan([e])
+            formation = _val(e["pour"], "systeme", "formation_depart")
+            ligne.update({
+                "xg_pour": xg_pour,
+                "xg_contre": xg_contre,
+                "ecart_xg": _r(xg_pour - xg_contre) if xg_pour is not None and xg_contre is not None else None,
+                "tirs_pour": _num(resultat.get("tirs_pour")),
+                "tirs_contre": _num(resultat.get("tirs_contre")),
+                "possession_pct": bilan["possession_pct"],
+                "ppda": bilan["ppda"],
+                "formation": _libelle_formation(formation) if isinstance(formation, str) else None,
+            })
+        matchs.append(ligne)
+    chronologie = list(reversed(matchs))
+    barres = hauteurs_ecart([m["ecart_xg"] for m in chronologie])
+    return {
+        "matchs": matchs,
+        "nb_calcules": sum(1 for m in matchs if m["calcule"]),
+        "ecarts_xg": [{"date": m["date"], "rencontre": m["rencontre"], "calcule": m["calcule"],
+                       "valeur": m["ecart_xg"], "hauteur": b["hauteur"], "classe": b["classe"]}
+                      for m, b in zip(chronologie, barres)],
     }
 
 
@@ -686,6 +776,8 @@ def construire(elements):
         "nb_matchs_calcules": len(calcules),
         "matchs_avec_360": trois_cent_soixante["matchs_avec_360"] if trois_cent_soixante else 0,
         "resultats": _resultats(calcules),
+        # Seul bloc qui reçoit aussi les matchs non calculés (« non calculé »).
+        "tendances": _tendances(elements),
         "systeme": _systeme(calcules, dernier_calcule),
         "joueurs": _joueurs(calcules),
         "attaque": _attaque(calcules),
