@@ -1,0 +1,42 @@
+/* Impression de la fiche adversaire — liée seulement depuis fiche.html (media="print").
+   Retirer la balise <link> désactive tout. Pas de JavaScript : Ctrl+P / « Enregistrer en PDF ». */
+@page { size: A4; margin: 12mm; }
+
+/* Couleurs des terrains et des barres conservées à l'impression. */
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body { background: #fff; font-size: 11pt; }
+
+/* Éléments d'interface masqués. */
+.entete,
+.navigation,
+.sommaire,
+.deconnexion,
+.aide a,
+.bandeau code { display: none; }
+
+.contenu { max-width: none; margin: 0; padding: 0; }
+.carte { box-shadow: none; border-radius: 0; padding: 0 0 8mm; background: #fff; }
+
+/* Chaque bloc tient sur une page s'il le peut, sinon il passe à la suivante. */
+.bloc { margin-top: 0; break-inside: avoid; page-break-inside: avoid; }
+.bloc h2, .bloc h3 { break-after: avoid; page-break-after: avoid; }
+
+/* Tableaux entiers : plus de défilement ni de troncature. */
+.defile { overflow: visible; }
+.matchs { width: 100%; }
+.matchs th, .matchs td { white-space: normal; }
+.matchs tr { break-inside: avoid; page-break-inside: avoid; }
+.commande { overflow: visible; white-space: pre-wrap; }
+
+/* Grilles lisibles : colonnes plus étroites, jamais coupées entre deux pages. */
+.chiffres { grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+.chiffres div { break-inside: avoid; border: 1px solid #ccc; background: #fff; }
+.chiffres dd { font-size: 14pt; }
+.grilles, .xi, .deux-colonnes { gap: 8px; }
+.grille, .xi-terrain, .xi-liste { break-inside: avoid; page-break-inside: avoid; }
+.grille { flex: 1 1 45%; max-width: 48%; }
+.xi-terrain { flex: 1 1 50%; max-width: 60%; }
+.xi-liste { flex: 1 1 35%; }
+.terrain { max-height: 120mm; }
+.barres th { width: 60px; }

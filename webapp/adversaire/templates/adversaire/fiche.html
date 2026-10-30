@@ -1,5 +1,7 @@
 {% extends "base.html" %}
+{% load static %}
 {% block titre %}Fiche — {{ suivi.equipe.nom }}{% endblock %}
+{% block tete %}<link rel="stylesheet" media="print" href="{% static 'analyste/fiche-impression.css' %}">{% endblock %}
 {% block contenu %}
 <section class="carte">
   <p class="aide"><a href="{% url 'accueil' %}?suivi={{ suivi.id }}">← Adversaire du week-end</a></p>

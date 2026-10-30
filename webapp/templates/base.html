@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titre %}Analyste{% endblock %} — USL Dunkerque</title>
   <link rel="stylesheet" href="{% static 'analyste/app.css' %}">
+  {% block tete %}{% endblock %}
 </head>
 <body>
   {# CSP stricte : ni style ni gestionnaire d'événement en attribut (cf. analyste_site/securite.py). #}

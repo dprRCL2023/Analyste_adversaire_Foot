@@ -7,6 +7,7 @@ from datetime import date, time, timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.staticfiles import finders
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -315,6 +316,33 @@ class PageFicheBlocs3c2Test(TestCase):
             "version_fiche": fiche.VERSION_FICHE if version is None else version,
             "matchs": [self.match.pk], "nb_matchs_calcules": 2, "valeurs": valeurs})
         return self.client.get(reverse("fiche", args=[self.suivi.id]))
+
+    def test_feuille_d_impression_liee_seulement_depuis_la_fiche(self):
+        reponse = self.page(valeurs_3c2())
+        self.assertContains(reponse, '<link rel="stylesheet" media="print" '
+                                     'href="/static/analyste/fiche-impression.css">', html=False)
+        self.assertNotContains(reponse, "<style")
+        self.assertNotContains(self.client.get(reverse("accueil")), "fiche-impression")
+
+    def test_contenu_de_la_feuille_d_impression(self):
+        chemin = finders.find("analyste/fiche-impression.css")
+        self.assertIsNotNone(chemin)
+        with open(chemin, encoding="utf-8") as f:
+            css = re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S)
+        regles = {}
+        for selecteurs, corps in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            for sel in selecteurs.split(","):
+                regles.setdefault(sel.strip(), "")
+                regles[sel.strip()] += corps
+        for sel in (".entete", ".sommaire"):
+            self.assertIn("display: none", regles.get(sel, ""), sel)
+        self.assertIn("overflow: visible", regles.get(".defile", ""))
+        self.assertIn("break-inside: avoid", regles.get(".bloc", ""))
+        # Le bandeau « Fiche à recalculer » reste imprimé : seule la commande est masquée.
+        self.assertNotIn(".bandeau", regles)
+        self.assertIn("display: none", regles.get(".bandeau code", ""))
+        self.assertNotIn("@import", css)
+        self.assertNotIn("url(", css)
 
     def test_blocs_et_valeurs_en_dur(self):
         reponse = self.page(valeurs_3c2())
